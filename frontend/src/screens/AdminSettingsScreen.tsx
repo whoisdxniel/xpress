@@ -48,6 +48,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
   const [pricingByType, setPricingByType] = useState<Record<string, any>>({});
 
   const [pricingBaseFare, setPricingBaseFare] = useState("0");
+  const [pricingNightBaseFare, setPricingNightBaseFare] = useState("0");
   const [pricingIncludedMeters, setPricingIncludedMeters] = useState("0");
   const [pricingStepMeters, setPricingStepMeters] = useState("0");
   const [pricingStepPrice, setPricingStepPrice] = useState("0");
@@ -77,6 +78,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
 
       const current = byType[pricingType] ?? null;
       setPricingBaseFare(String(current?.baseFare ?? 0));
+      setPricingNightBaseFare(String(current?.nightBaseFare ?? 0));
       setPricingIncludedMeters(String(current?.includedMeters ?? 0));
       setPricingStepMeters(String(current?.stepMeters ?? 0));
       setPricingStepPrice(String(current?.stepPrice ?? 0));
@@ -90,6 +92,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
   useEffect(() => {
     const current = pricingByType[pricingType] ?? null;
     setPricingBaseFare(String(current?.baseFare ?? 0));
+    setPricingNightBaseFare(String(current?.nightBaseFare ?? 0));
     setPricingIncludedMeters(String(current?.includedMeters ?? 0));
     setPricingStepMeters(String(current?.stepMeters ?? 0));
     setPricingStepPrice(String(current?.stepPrice ?? 0));
@@ -99,6 +102,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
     if (!token) return;
 
     const baseFare = parseNumber(pricingBaseFare);
+    const nightBaseFareByType = parseNumber(pricingNightBaseFare);
     const includedMeters = parseIntSafe(pricingIncludedMeters);
     const stepMeters = parseIntSafe(pricingStepMeters);
     const stepPrice = parseNumber(pricingStepPrice);
@@ -107,6 +111,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
     const pct = parseNumber(driverCreditChargePercent);
 
     if (!Number.isFinite(baseFare) || baseFare < 0) return Alert.alert("Validación", "Tarifa base inválida");
+    if (!Number.isFinite(nightBaseFareByType) || nightBaseFareByType < 0)
+      return Alert.alert("Validación", "Tarifa base nocturna (por tipo) inválida");
     if (!Number.isFinite(includedMeters) || includedMeters < 0) return Alert.alert("Validación", "Distancia incluida inválida");
     if (!Number.isFinite(stepMeters) || stepMeters < 0) return Alert.alert("Validación", "Metros por tramo inválidos");
     if (!Number.isFinite(stepPrice) || stepPrice < 0) return Alert.alert("Validación", "Precio por tramo inválido");
@@ -124,6 +130,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
       await apiAdminUpsertPricing(token, {
         serviceType: pricingType,
         baseFare,
+        nightBaseFare: nightBaseFareByType,
         includedMeters,
         stepMeters,
         stepPrice,
@@ -212,6 +219,14 @@ export function AdminSettingsScreen({ navigation }: Props) {
             onChangeText={setPricingBaseFare}
             keyboardType="number-pad"
             placeholder="Ej: 5000"
+          />
+
+          <TextField
+            label="Tarifa base nocturna (este tipo)"
+            value={pricingNightBaseFare}
+            onChangeText={setPricingNightBaseFare}
+            keyboardType="number-pad"
+            placeholder="0 para usar la global"
           />
 
           <TextField

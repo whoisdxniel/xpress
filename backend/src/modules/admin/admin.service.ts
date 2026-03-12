@@ -57,6 +57,7 @@ export async function createDriverByAdmin(input: {
                   ? ServiceType.MOTO_CARGA
                   : ServiceType.CARRO_CARGA,
           status: DriverStatus.APPROVED,
+          isAvailable: true,
           vehicle: {
             create: {
               brand: input.vehicle.brand,
@@ -715,6 +716,7 @@ export async function approveDriver(params: { driverId: string; status: "OBSERVA
 export async function upsertPricing(params: {
   serviceType: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
   baseFare: number;
+  nightBaseFare?: number;
   perKm: number;
   includedMeters?: number;
   stepMeters?: number;
@@ -726,11 +728,13 @@ export async function upsertPricing(params: {
   const includedMeters = Math.max(0, Math.floor(Number(params.includedMeters ?? 0)));
   const stepMeters = Math.max(0, Math.floor(Number(params.stepMeters ?? 0)));
   const stepPrice = Math.max(0, Number(params.stepPrice ?? 0));
+  const nightBaseFare = Math.max(0, Number(params.nightBaseFare ?? 0));
 
   return prisma.pricingConfig.upsert({
     where: { serviceType: params.serviceType as ServiceType },
     update: {
       baseFare: params.baseFare,
+      nightBaseFare,
       perKm: params.perKm,
       includedMeters,
       stepMeters,
@@ -742,6 +746,7 @@ export async function upsertPricing(params: {
     create: {
       serviceType: params.serviceType as ServiceType,
       baseFare: params.baseFare,
+      nightBaseFare,
       perKm: params.perKm,
       includedMeters,
       stepMeters,

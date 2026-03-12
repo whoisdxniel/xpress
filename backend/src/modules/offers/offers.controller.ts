@@ -70,7 +70,7 @@ export async function commitOfferController(req: Request, res: Response) {
   const input = CommitOfferSchema.parse(req.body ?? {});
   const result = await commitOffer({ userId, offerId, coords: input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : undefined });
 
-  if (!result.ok) return res.status(400).json({ message: result.error });
+  if (!result.ok) return res.status((result as any).status ?? 400).json({ message: result.error });
   return res.status(200).json(result);
 }
 

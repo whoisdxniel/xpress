@@ -1,6 +1,8 @@
 import { prisma } from "../../db/prisma";
 import { getAppConfig } from "../config/appConfig.service";
 
+export const MIN_DRIVER_CREDITS_COP_TO_OPERATE = 15000;
+
 export async function getOrCreateCreditAccount(params: { userId: string }) {
   return prisma.creditAccount.upsert({
     where: { userId: params.userId },
@@ -12,6 +14,23 @@ export async function getOrCreateCreditAccount(params: { userId: string }) {
 export async function getMyCredits(params: { userId: string }) {
   const account = await getOrCreateCreditAccount({ userId: params.userId });
   return { ok: true as const, balanceCop: account.balanceCop };
+}
+
+export async function ensureDriverHasMinCredits(params: { userId: string; minCop?: number }) {
+  const minCop = Math.max(0, Math.round(Number(params.minCop ?? MIN_DRIVER_CREDITS_COP_TO_OPERATE)));
+  const account = await getOrCreateCreditAccount({ userId: params.userId });
+
+  if (account.balanceCop < minCop) {
+    return {
+      ok: false as const,
+      status: 402 as const,
+      error: `Saldo insuficiente: tenés ${account.balanceCop} COP. Necesitás mínimo ${minCop} COP para continuar.`,
+      balanceCop: account.balanceCop,
+      minCop,
+    };
+  }
+
+  return { ok: true as const, balanceCop: account.balanceCop, minCop };
 }
 
 function rideFinalAmountCop(ride: {

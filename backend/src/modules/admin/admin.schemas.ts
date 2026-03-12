@@ -28,6 +28,7 @@ export const UpdateDriverStatusSchema = z.object({
 
 export const UpsertPricingSchema = z.object({
   baseFare: z.coerce.number().nonnegative(),
+  nightBaseFare: z.coerce.number().nonnegative().optional().default(0),
   perKm: z.coerce.number().nonnegative().optional().default(0),
 
   // Pricing por tramos (opcional: si stepMeters es 0, no aplica)

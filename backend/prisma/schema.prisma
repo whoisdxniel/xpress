@@ -162,6 +162,8 @@ model PricingConfig {
   id             String      @id @default(cuid())
   serviceType    ServiceType @unique
   baseFare       Decimal     @db.Decimal(10, 2)
+  // Tarifa base nocturna por tipo. Si es 0, se usa AppConfig.nightBaseFare como fallback.
+  nightBaseFare  Decimal     @db.Decimal(10, 2) @default(0)
   perKm          Decimal     @db.Decimal(10, 2)
 
   // Nuevo modo de tarifa por tramos.

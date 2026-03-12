@@ -245,6 +245,7 @@ export function apiAdminUpsertPricing(
   input: {
     serviceType: ServiceType;
     baseFare: number;
+    nightBaseFare?: number;
     includedMeters?: number;
     stepMeters?: number;
     stepPrice?: number;
@@ -260,6 +261,7 @@ export function apiAdminUpsertPricing(
     token,
     body: {
       baseFare: input.baseFare,
+      nightBaseFare: input.nightBaseFare ?? 0,
       perKm: input.perKm ?? 0,
       includedMeters: input.includedMeters ?? 0,
       stepMeters: input.stepMeters ?? 0,

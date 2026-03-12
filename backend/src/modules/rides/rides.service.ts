@@ -4,7 +4,7 @@ import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { buildWhatsappLink } from "../../utils/whatsapp";
 import { emitToUser } from "../../realtime/realtime";
 import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
-import { chargeDriverCreditsForCompletedRide } from "../credits/credits.service";
+import { chargeDriverCreditsForCompletedRide, ensureDriverHasMinCredits } from "../credits/credits.service";
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
 import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
@@ -257,10 +257,11 @@ export async function createRide(params: {
 
   const now = new Date();
   const appConfig = await getAppConfig();
+  const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
-    nightBaseFare: Number(appConfig.nightBaseFare),
+    nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
     nightStartHour: appConfig.nightStartHour,
   });
 
@@ -521,6 +522,10 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
   });
   if (!driver) return { ok: false as const, status: 404 as const, error: "Driver not found" };
   if (!driver.user?.isActive) return { ok: false as const, status: 403 as const, error: "Driver disabled" };
+
+  const credits = await ensureDriverHasMinCredits({ userId: params.userId });
+  if (!credits.ok) return { ok: false as const, status: credits.status, error: credits.error };
+
   if (!driver.isAvailable) return { ok: false as const, status: 400 as const, error: "Driver not available" };
   if (!driver.location) return { ok: false as const, status: 400 as const, error: "Driver location missing" };
   if (driver.location.updatedAt < driverLocationFreshSince()) {

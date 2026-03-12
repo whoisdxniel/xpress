@@ -6,6 +6,7 @@ import { getDrivingRoute, getDrivingRouteDistanceMeters } from "../../utils/dire
 import { calculateFare } from "../../utils/fare";
 import { env } from "../../utils/env";
 import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
+import { ensureDriverHasMinCredits } from "../credits/credits.service";
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
@@ -77,10 +78,11 @@ export async function estimateOffer(params: {
 
   const now = new Date();
   const appConfig = await getAppConfig();
+  const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
-    nightBaseFare: Number(appConfig.nightBaseFare),
+    nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
     nightStartHour: appConfig.nightStartHour,
   });
 
@@ -272,16 +274,24 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
   });
   if (!driver) return { ok: false as const, error: "Driver not found" };
   if (!driver.user?.isActive) return { ok: false as const, error: "Driver disabled" };
-  if (!driver.isAvailable) return { ok: false as const, error: "Driver not available" };
+
+  const credits = await ensureDriverHasMinCredits({ userId: params.userId });
+  if (!credits.ok) return { ok: false as const, status: credits.status, error: credits.error };
 
   // Si nos pasan coords desde el teléfono, las guardamos y usamos esas.
   if (params.coords) {
-    await prisma.driverLocation.upsert({
-      where: { driverId: driver.id },
-      create: { driverId: driver.id, lat: params.coords.lat, lng: params.coords.lng },
-      update: { lat: params.coords.lat, lng: params.coords.lng },
-    });
+    await prisma.$transaction([
+      prisma.driverLocation.upsert({
+        where: { driverId: driver.id },
+        create: { driverId: driver.id, lat: params.coords.lat, lng: params.coords.lng },
+        update: { lat: params.coords.lat, lng: params.coords.lng },
+      }),
+      prisma.driverProfile.update({ where: { id: driver.id }, data: { isAvailable: true } }),
+    ]);
   }
+
+  // Si no hay coords, dependemos del estado persistido.
+  if (!params.coords && !driver.isAvailable) return { ok: false as const, error: "Driver not available" };
 
   if (!params.coords && !driver.location) return { ok: false as const, error: "Driver location missing" };
 
@@ -305,10 +315,11 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
 
   const appConfig = await getAppConfig();
   const now = new Date();
+  const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
-    nightBaseFare: Number(appConfig.nightBaseFare),
+    nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
     nightStartHour: appConfig.nightStartHour,
   });
 

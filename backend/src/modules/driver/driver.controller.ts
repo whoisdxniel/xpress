@@ -47,11 +47,17 @@ export async function driverUpsertLocationController(req: Request, res: Response
   const driver = await prisma.driverProfile.findUnique({ where: { userId }, select: { id: true } });
   if (!driver) return res.status(404).json({ message: "Driver not found" });
 
-  const location = await prisma.driverLocation.upsert({
-    where: { driverId: driver.id },
-    update: { lat: input.lat, lng: input.lng },
-    create: { driverId: driver.id, lat: input.lat, lng: input.lng },
-  });
+  const [location] = await prisma.$transaction([
+    prisma.driverLocation.upsert({
+      where: { driverId: driver.id },
+      update: { lat: input.lat, lng: input.lng },
+      create: { driverId: driver.id, lat: input.lat, lng: input.lng },
+    }),
+    prisma.driverProfile.update({
+      where: { userId },
+      data: { isAvailable: true },
+    }),
+  ]);
 
   return res.status(200).json({ ok: true, location });
 }
@@ -182,10 +188,11 @@ export async function driverUpdateMeterController(req: Request, res: Response) {
   if (!(Number.isFinite(baseFare) && baseFare > 0)) {
     const appConfig = await getAppConfig();
     const now = new Date();
+    const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
     baseFare = effectiveBaseFare({
       dayBaseFare: Number(pricing.baseFare),
       now,
-      nightBaseFare: Number(appConfig.nightBaseFare),
+      nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
       nightStartHour: appConfig.nightStartHour,
     });
   }

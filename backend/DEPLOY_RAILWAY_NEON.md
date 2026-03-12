@@ -42,8 +42,13 @@ Uploads (Cloudinary) (recomendado en Railway):
 - `CLOUDINARY_API_SECRET`
 - (opcional) `CLOUDINARY_FOLDER` (default: `xpress`)
 
+Push notifications (FCM) (para que salgan notificaciones):
+- `FCM_SERVICE_ACCOUNT_JSON` = JSON del service account de Firebase (recomendado)
+- o `FCM_SERVICE_ACCOUNT_PATH` = path a un archivo JSON (menos práctico en Railway)
+
 Notas:
 - Si NO configurás Cloudinary, el backend cae a uploads locales (en Railway el disco no es persistente).
+- Si NO configurás FCM, el backend no enviará push (la app igual funciona).
 
 ## 4) Verificación rápida
 

@@ -1,8 +1,57 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { prisma } from "../db/prisma";
+import { ServiceType } from "@prisma/client";
+import { getAppConfig } from "../modules/config/appConfig.service";
+
+async function ensurePricing() {
+  const rows: Array<{
+    serviceType: ServiceType;
+    baseFare: number;
+    perKm: number;
+    acSurcharge: number;
+    trunkSurcharge: number;
+    petsSurcharge: number;
+  }> = [
+    // "CARRO" equivale al servicio base (tipo taxi/carro)
+    { serviceType: ServiceType.CARRO, baseFare: 1200, perKm: 450, acSurcharge: 250, trunkSurcharge: 200, petsSurcharge: 200 },
+    // Moto
+    { serviceType: ServiceType.MOTO, baseFare: 800, perKm: 300, acSurcharge: 0, trunkSurcharge: 0, petsSurcharge: 0 },
+    // Carga (defaults razonables para no bloquear el flujo)
+    { serviceType: ServiceType.MOTO_CARGA, baseFare: 900, perKm: 320, acSurcharge: 0, trunkSurcharge: 150, petsSurcharge: 0 },
+    { serviceType: ServiceType.CARRO_CARGA, baseFare: 1400, perKm: 480, acSurcharge: 250, trunkSurcharge: 250, petsSurcharge: 200 },
+  ];
+
+  for (const row of rows) {
+    await prisma.pricingConfig.upsert({
+      where: { serviceType: row.serviceType },
+      create: {
+        serviceType: row.serviceType,
+        baseFare: row.baseFare,
+        perKm: row.perKm,
+        acSurcharge: row.acSurcharge,
+        trunkSurcharge: row.trunkSurcharge,
+        petsSurcharge: row.petsSurcharge,
+      },
+      update: {
+        baseFare: row.baseFare,
+        perKm: row.perKm,
+        acSurcharge: row.acSurcharge,
+        trunkSurcharge: row.trunkSurcharge,
+        petsSurcharge: row.petsSurcharge,
+      },
+    });
+  }
+
+  // eslint-disable-next-line no-console
+  console.log("[seed] ensured PricingConfig", { count: rows.length });
+}
 
 async function main() {
+  // Asegura que exista AppConfig global (se usa para tarifa nocturna, etc.)
+  await getAppConfig();
+  await ensurePricing();
+
   const username = "admin";
   const email = "admin@xpress.local";
   const password = "xpress_admin";

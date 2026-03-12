@@ -1,5 +1,7 @@
 const API_SUFFIX = "/api";
 
+const DEFAULT_PROD_API_BASE_URL = "https://xpress-production-e5d4.up.railway.app/api";
+
 function guessLanApiBaseUrl() {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -20,6 +22,9 @@ function guessLanApiBaseUrl() {
 export function getApiBaseUrl() {
   const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL;
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+
+  // Default: Railway (para que Expo Go local funcione sin levantar backend local)
+  if (DEFAULT_PROD_API_BASE_URL) return DEFAULT_PROD_API_BASE_URL;
 
   const guessed = guessLanApiBaseUrl();
   if (guessed) return guessed;

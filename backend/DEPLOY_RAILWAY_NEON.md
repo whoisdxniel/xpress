@@ -53,12 +53,15 @@ Cuando termine el deploy:
 
 ## 5) Seed (crear admin y usuarios demo)
 
-El repo trae un seed por Prisma (admin + usuarios demo). Opciones:
+El repo trae un seed por Prisma (admin + usuarios demo + pricing mínimo). Opciones:
 
 - Local (apunta a Neon):
   1. En `backend/`, configurá `DATABASE_URL`/`DIRECT_URL` hacia Neon.
   2. Corré `npx prisma migrate deploy`
-  3. Corré `npx prisma db seed`
+   3. Corré `npx prisma db seed`
+
+Notas:
+- El archivo `prisma/dev_test_users.sql` es legado de MySQL/MariaDB y no aplica para Postgres.
 
 Credenciales que crea el seed:
 - Admin: `admin@xpress.local` / `xpress_admin`

@@ -34,3 +34,11 @@ Al finalizar, EAS te da un link para descargar el APK.
 ## Notas
 - Usá HTTPS en producción (Android suele bloquear HTTP plano).
 - Si cambiás `android.package` en `app.json`, EAS lo toma como una app distinta.
+
+## Push notifications (Android)
+Esta app registra el token nativo (FCM) con `expo-notifications` y el backend envía por Firebase Admin.
+
+Para que las push funcionen en el APK:
+- Crear un proyecto Firebase con el package `com.xpress.traslados`.
+- Descargar `google-services.json` y colocarlo en `frontend/google-services.json`.
+- Configurar el backend (Railway) con `FCM_SERVICE_ACCOUNT_JSON` (service account de Firebase).

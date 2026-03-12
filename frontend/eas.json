@@ -29,7 +29,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://xpress.tumarcaagencia.com/api",
+        "EXPO_PUBLIC_API_BASE_URL": "https://xpress-production-e5d4.up.railway.app/api",
         "EXPO_PUBLIC_OSRM_BASE_URL": "https://router.project-osrm.org"
       }
     }

@@ -18,6 +18,10 @@ upload/uploads/
 
 frontend/.env
 
+# Firebase (push)
+frontend/google-services.json
+frontend/GoogleService-Info.plist
+
 # Expo prebuild (generado)
 frontend/android/
 frontend/ios/

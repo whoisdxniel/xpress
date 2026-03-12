@@ -1,0 +1,904 @@
+import { OfferStatus, RideCandidateStatus, RideStatus, ServiceType } from "@prisma/client";
+import { prisma } from "../../db/prisma";
+import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
+import { buildWhatsappLink } from "../../utils/whatsapp";
+import { emitToUser } from "../../realtime/realtime";
+import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
+import { chargeDriverCreditsForCompletedRide } from "../credits/credits.service";
+import { env } from "../../utils/env";
+import { calculateFare } from "../../utils/fare";
+import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
+import { getDrivingRoute } from "../../utils/directions";
+
+const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
+
+function driverLocationFreshSince() {
+  return new Date(Date.now() - DRIVER_LOCATION_MAX_AGE_MS);
+}
+
+function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
+  return serviceTypeWanted;
+}
+
+export async function getActiveRideForRequester(params: { requester: { id: string; role: "ADMIN" | "USER" | "DRIVER" } }) {
+  // Admin: no aplica (evitamos ambigüedad)
+  if (params.requester.role === "ADMIN") {
+    return { ok: true as const, ride: null };
+  }
+
+  if (params.requester.role === "USER") {
+    const passenger = await prisma.passengerProfile.findUnique({
+      where: { userId: params.requester.id },
+      select: { id: true },
+    });
+    if (!passenger) return { ok: false as const, status: 404 as const, error: "Passenger not found" };
+
+    const ride = await prisma.rideRequest.findFirst({
+      where: {
+        passengerId: passenger.id,
+        status: { notIn: ["CANCELLED", "EXPIRED"] },
+        OR: [
+          { status: { in: ["OPEN", "ASSIGNED", "ACCEPTED", "MATCHED", "IN_PROGRESS"] } },
+          { status: "COMPLETED", ratings: { none: { direction: "PASSENGER_TO_DRIVER" } } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        passenger: { select: { fullName: true, firstName: true, lastName: true, phone: true, userId: true } },
+        matchedDriver: { select: { id: true, fullName: true, firstName: true, lastName: true, phone: true, userId: true, serviceType: true, vehicle: true } },
+        offer: { select: { id: true, offeredPrice: true } },
+        ratings: true,
+      },
+    });
+
+    return { ok: true as const, ride };
+  }
+
+  // DRIVER
+  const driver = await prisma.driverProfile.findUnique({
+    where: { userId: params.requester.id },
+    select: { id: true },
+  });
+  if (!driver) return { ok: false as const, status: 404 as const, error: "Driver not found" };
+
+  const ride = await prisma.rideRequest.findFirst({
+    where: {
+      matchedDriverId: driver.id,
+      status: { notIn: ["CANCELLED", "EXPIRED"] },
+      OR: [
+        { status: { in: ["ASSIGNED", "ACCEPTED", "MATCHED", "IN_PROGRESS"] } },
+        { status: "COMPLETED", ratings: { none: { direction: "DRIVER_TO_PASSENGER" } } },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+    include: {
+        passenger: { select: { fullName: true, firstName: true, lastName: true, phone: true, userId: true } },
+        matchedDriver: { select: { id: true, fullName: true, firstName: true, lastName: true, phone: true, userId: true, serviceType: true, vehicle: true } },
+      offer: { select: { id: true, offeredPrice: true } },
+      ratings: true,
+    },
+  });
+
+  return { ok: true as const, ride };
+}
+
+export async function listNearbyDrivers(params: {
+  userId: string;
+  center: { lat: number; lng: number };
+  radiusM: number;
+  serviceType?: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
+}) {
+  const radiusKm = params.radiusM / 1000;
+  const box = boundingBoxKm({ lat: params.center.lat, lng: params.center.lng }, radiusKm);
+
+  const freshSince = driverLocationFreshSince();
+
+  const drivers = await prisma.driverProfile.findMany({
+    where: {
+      isAvailable: true,
+      user: { is: { isActive: true } },
+      ...(params.serviceType ? { serviceType: params.serviceType as ServiceType } : null),
+      location: {
+        is: {
+          updatedAt: { gte: freshSince },
+          lat: { gte: box.minLat, lte: box.maxLat },
+          lng: { gte: box.minLng, lte: box.maxLng },
+        },
+      },
+    },
+    include: {
+      location: true,
+      vehicle: true,
+    },
+    take: 200,
+  });
+
+  const items = drivers
+    .map((d) => {
+      const dist = haversineDistanceMeters(
+        { lat: params.center.lat, lng: params.center.lng },
+        { lat: Number(d.location?.lat), lng: Number(d.location?.lng) }
+      );
+
+      return {
+        driverId: d.id,
+        fullName: d.fullName,
+        photoUrl: d.photoUrl,
+        serviceType: d.serviceType,
+        vehicle: d.vehicle,
+        location: d.location
+          ? {
+              lat: Number(d.location.lat),
+              lng: Number(d.location.lng),
+              updatedAt: d.location.updatedAt,
+            }
+          : null,
+        distanceMeters: Math.round(dist),
+      };
+    })
+    .filter((x) => x.location && x.distanceMeters <= params.radiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 100);
+
+  return { ok: true as const, center: params.center, radiusM: params.radiusM, items };
+}
+
+export async function getDriverTechSheetForUser(params: { driverId: string }) {
+  const driver = await prisma.driverProfile.findUnique({
+    where: { id: params.driverId },
+    include: {
+      vehicle: true,
+      documents: { where: { type: "VEHICLE_PHOTO" } },
+      user: { select: { isActive: true } },
+    },
+  });
+
+  // Solo filtramos choferes desactivados.
+  if (!driver || !driver.user?.isActive) {
+    return { ok: false as const, status: 404 as const, error: "Driver not found" };
+  }
+
+  return {
+    ok: true as const,
+    driver: {
+      id: driver.id,
+      fullName: driver.fullName,
+      phone: driver.phone,
+      photoUrl: driver.photoUrl,
+      serviceType: driver.serviceType,
+      vehicle: driver.vehicle,
+      documents: driver.documents,
+    },
+  };
+}
+
+export async function createRide(params: {
+  userId: string;
+  serviceTypeWanted: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
+  pickup: { lat: number; lng: number; address?: string };
+  dropoff: { lat: number; lng: number; address?: string };
+  distanceMeters?: number;
+  durationSeconds?: number;
+  wantsAC: boolean;
+  wantsTrunk: boolean;
+  wantsPets: boolean;
+  addonIds?: string[];
+  searchRadiusM: number;
+}) {
+  const passenger = await prisma.passengerProfile.findUnique({
+    where: { userId: params.userId },
+    select: { id: true },
+  });
+  if (!passenger) return { ok: false as const, error: "Passenger profile not found" };
+
+  // Si el pasajero crea una nueva solicitud teniendo otra OPEN sin asignación,
+  // borramos la anterior para evitar confusiones (y para que desaparezca a choferes).
+  await prisma.rideRequest.deleteMany({
+    where: {
+      passengerId: passenger.id,
+      status: RideStatus.OPEN,
+      matchedDriverId: null,
+    },
+  });
+
+  // Si el pasajero tiene una contraoferta activa, la cancelamos automáticamente.
+  // (Evita estados inconsistentes: ride OPEN + offer OPEN simultáneos.)
+  await prisma.rideOffer.updateMany({
+    where: { passengerId: passenger.id, status: OfferStatus.OPEN },
+    data: { status: OfferStatus.CANCELLED },
+  });
+
+  const pricingType = pricingServiceTypeFor(params.serviceTypeWanted as ServiceType);
+  const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
+  if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
+
+  const route = await getDrivingRoute({
+    from: { lat: params.pickup.lat, lng: params.pickup.lng },
+    to: { lat: params.dropoff.lat, lng: params.dropoff.lng },
+  });
+
+  const dist = Math.max(
+    1,
+    route?.distanceMeters ??
+      params.distanceMeters ??
+      Math.round(haversineDistanceMeters({ lat: params.pickup.lat, lng: params.pickup.lng }, { lat: params.dropoff.lat, lng: params.dropoff.lng }))
+  );
+
+  const durationSeconds =
+    route?.durationSeconds && route.durationSeconds > 0
+      ? route.durationSeconds
+      : params.durationSeconds && params.durationSeconds > 0
+        ? params.durationSeconds
+        : undefined;
+
+  const surcharge =
+    (params.wantsAC ? Number(pricing.acSurcharge) : 0) +
+    (params.wantsTrunk ? Number(pricing.trunkSurcharge) : 0) +
+    (params.wantsPets ? Number(pricing.petsSurcharge) : 0);
+
+  const requestedAddonIds = Array.from(new Set(params.addonIds ?? []));
+  let addonsTotal = 0;
+  if (requestedAddonIds.length) {
+    const addons = await prisma.pricingAddon.findMany({
+      where: {
+        id: { in: requestedAddonIds },
+        serviceType: pricingType,
+        isActive: true,
+      },
+      select: { id: true, amount: true },
+    });
+
+    if (addons.length !== requestedAddonIds.length) {
+      return { ok: false as const, error: "Invalid addonIds for this service type" };
+    }
+
+    addonsTotal = addons.reduce((sum, a) => sum + Number(a.amount), 0);
+  }
+
+  const now = new Date();
+  const appConfig = await getAppConfig();
+  const baseFare = effectiveBaseFare({
+    dayBaseFare: Number(pricing.baseFare),
+    now,
+    nightBaseFare: Number(appConfig.nightBaseFare),
+    nightStartHour: appConfig.nightStartHour,
+  });
+
+  const estimated = calculateFare({
+    distanceMeters: dist,
+    baseFare,
+    perKm: Number(pricing.perKm),
+    includedKm: env.METER_INCLUDED_KM,
+    includedMeters: Number((pricing as any).includedMeters ?? 0),
+    stepMeters: Number((pricing as any).stepMeters ?? 0),
+    stepPrice: Number((pricing as any).stepPrice ?? 0),
+    surcharge,
+    addonsTotal,
+  });
+
+  const ride = await prisma.rideRequest.create({
+    data: {
+      passengerId: passenger.id,
+      serviceTypeWanted: params.serviceTypeWanted as ServiceType,
+      pickupLat: params.pickup.lat,
+      pickupLng: params.pickup.lng,
+      pickupAddress: params.pickup.address,
+      dropoffLat: params.dropoff.lat,
+      dropoffLng: params.dropoff.lng,
+      dropoffAddress: params.dropoff.address,
+      distanceMeters: dist,
+      durationSeconds,
+      routePath: route?.path as any,
+      wantsAC: params.wantsAC,
+      wantsTrunk: params.wantsTrunk,
+      wantsPets: params.wantsPets,
+      estimatedPrice: estimated,
+      pricingBaseFare: baseFare,
+      pricingPerKm: pricing.perKm,
+      pricingIncludedMeters: Number((pricing as any).includedMeters ?? 0),
+      pricingStepMeters: Number((pricing as any).stepMeters ?? 0),
+      pricingStepPrice: (pricing as any).stepPrice ?? 0,
+      pricingAcSurcharge: pricing.acSurcharge,
+      pricingTrunkSurcharge: pricing.trunkSurcharge,
+      pricingPetsSurcharge: pricing.petsSurcharge,
+      searchRadiusM: params.searchRadiusM,
+      status: "OPEN",
+      addons: requestedAddonIds.length
+        ? {
+            createMany: {
+              data: requestedAddonIds.map((addonId) => ({ addonId })),
+              skipDuplicates: true,
+            },
+          }
+        : undefined,
+    },
+  });
+
+  emitToUser(params.userId, "ride:created", { rideId: ride.id });
+
+  // Admin ve todas las solicitudes
+  void sendPushToAdmins({
+    title: "Nueva solicitud",
+    body: `Ride ${ride.id} (${params.serviceTypeWanted})`,
+    data: { rideId: ride.id, type: "RIDE_CREATED" },
+  });
+
+  return { ok: true as const, ride };
+}
+
+export async function getRideById(rideId: string) {
+  return prisma.rideRequest.findUnique({
+    where: { id: rideId },
+    include: {
+      passenger: { include: { user: { select: { id: true, email: true } } } },
+      matchedDriver: {
+        include: { user: { select: { id: true, email: true } }, vehicle: true, location: true },
+      },
+      addons: { include: { addon: true } },
+      ratings: true,
+    },
+  });
+}
+
+export async function getRideByIdForRequester(params: {
+  rideId: string;
+  requester: { id: string; role: "ADMIN" | "USER" | "DRIVER" };
+}) {
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: {
+      passenger: { include: { user: { select: { id: true, email: true } } } },
+      matchedDriver: {
+        include: { user: { select: { id: true, email: true } }, vehicle: true, location: true },
+      },
+      addons: { include: { addon: true } },
+      ratings: true,
+    },
+  });
+
+  if (!ride) return { ok: false as const, status: 404 as const, error: "Ride not found" };
+
+  if (params.requester.role === "ADMIN") return { ok: true as const, ride };
+  if (params.requester.role === "USER" && ride.passenger.user.id === params.requester.id)
+    return { ok: true as const, ride };
+  if (params.requester.role === "DRIVER" && ride.matchedDriver?.user.id === params.requester.id)
+    return { ok: true as const, ride };
+
+  return { ok: false as const, status: 403 as const, error: "Forbidden" };
+}
+
+export async function listRideCandidates(params: { userId: string; rideId: string }) {
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: { passenger: { select: { userId: true } } },
+  });
+  if (!ride) return { ok: false as const, error: "Ride not found" };
+  if (ride.passenger.userId !== params.userId) return { ok: false as const, error: "Forbidden" };
+
+  const radiusKm = ride.searchRadiusM / 1000;
+  const box = boundingBoxKm({ lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) }, radiusKm);
+
+  const freshSince = driverLocationFreshSince();
+
+  const drivers = await prisma.driverProfile.findMany({
+    where: {
+      isAvailable: true,
+      user: { is: { isActive: true } },
+      serviceType: ride.serviceTypeWanted,
+      location: {
+        is: {
+          updatedAt: { gte: freshSince },
+          lat: { gte: box.minLat, lte: box.maxLat },
+          lng: { gte: box.minLng, lte: box.maxLng },
+        },
+      },
+    },
+    include: {
+      location: true,
+      vehicle: true,
+      user: { select: { id: true, email: true } },
+    },
+    take: 200,
+  });
+
+  const candidates = drivers
+    .map((d) => {
+      const dist = haversineDistanceMeters(
+        { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) },
+        { lat: Number(d.location?.lat), lng: Number(d.location?.lng) }
+      );
+
+      return {
+        driverId: d.id,
+        fullName: d.fullName,
+        photoUrl: d.photoUrl,
+        serviceType: d.serviceType,
+        vehicle: d.vehicle,
+        distanceMeters: Math.round(dist),
+        whatsappLink: buildWhatsappLink({
+          phoneRaw: d.phone,
+          text: `Hola ${d.fullName}, soy tu pasajero de Xpress Traslados.`,
+        }),
+      };
+    })
+    .filter((c) => c.distanceMeters <= ride.searchRadiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 50);
+
+  return { ok: true as const, ride, candidates };
+}
+
+export async function listNearbyRideRequestsForDriver(params: { userId: string; radiusM: number; take: number }) {
+  const driver = await prisma.driverProfile.findUnique({
+    where: { userId: params.userId },
+    include: { location: true, user: { select: { isActive: true } } },
+  });
+
+  if (!driver) return { ok: false as const, status: 404 as const, error: "Driver not found" };
+  if (!driver.user?.isActive) return { ok: false as const, status: 403 as const, error: "Driver disabled" };
+  if (!driver.location) return { ok: false as const, status: 400 as const, error: "Driver location missing" };
+
+  const center = { lat: Number(driver.location.lat), lng: Number(driver.location.lng) };
+  const radiusKm = params.radiusM / 1000;
+  const box = boundingBoxKm(center, radiusKm);
+
+  const raw = await prisma.rideRequest.findMany({
+    where: {
+      status: "OPEN",
+      matchedDriverId: null,
+      serviceTypeWanted: driver.serviceType,
+      pickupLat: { gte: box.minLat, lte: box.maxLat },
+      pickupLng: { gte: box.minLng, lte: box.maxLng },
+      passenger: { is: { user: { is: { isActive: true } } } },
+    },
+    include: {
+      passenger: {
+        select: {
+          fullName: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          photoUrl: true,
+          user: { select: { id: true } },
+        },
+      },
+      candidates: {
+        where: { driverId: driver.id },
+        select: { status: true, createdAt: true, updatedAt: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(200, Math.max(params.take, 1) * 5),
+  });
+
+  const items = raw
+    .map((r) => {
+      const dist = haversineDistanceMeters(center, { lat: Number(r.pickupLat), lng: Number(r.pickupLng) });
+      const mine = r.candidates[0];
+
+      return {
+        rideId: r.id,
+        pickup: {
+          lat: Number(r.pickupLat),
+          lng: Number(r.pickupLng),
+          address: r.pickupAddress ?? undefined,
+        },
+        dropoff: {
+          lat: Number(r.dropoffLat),
+          lng: Number(r.dropoffLng),
+          address: r.dropoffAddress ?? undefined,
+        },
+        estimatedPrice: Number(r.estimatedPrice),
+        createdAt: r.createdAt,
+        passenger: {
+          fullName: r.passenger.fullName,
+          firstName: r.passenger.firstName,
+          lastName: r.passenger.lastName,
+          phone: r.passenger.phone,
+          photoUrl: r.passenger.photoUrl,
+        },
+        myOffer: mine
+          ? {
+              status: mine.status,
+              createdAt: mine.createdAt,
+              updatedAt: mine.updatedAt,
+            }
+          : null,
+        distanceMeters: Math.round(dist),
+      };
+    })
+    .filter((x) => x.distanceMeters <= params.radiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, Math.min(100, Math.max(params.take, 1)));
+
+  return { ok: true as const, center, radiusM: params.radiusM, items };
+}
+
+export async function offerRideForDriver(params: { userId: string; rideId: string }) {
+  const driver = await prisma.driverProfile.findUnique({
+    where: { userId: params.userId },
+    include: { location: true, user: { select: { isActive: true } } },
+  });
+  if (!driver) return { ok: false as const, status: 404 as const, error: "Driver not found" };
+  if (!driver.user?.isActive) return { ok: false as const, status: 403 as const, error: "Driver disabled" };
+  if (!driver.isAvailable) return { ok: false as const, status: 400 as const, error: "Driver not available" };
+  if (!driver.location) return { ok: false as const, status: 400 as const, error: "Driver location missing" };
+  if (driver.location.updatedAt < driverLocationFreshSince()) {
+    return { ok: false as const, status: 400 as const, error: "Driver offline" };
+  }
+
+  // Evitar que un chofer con servicio activo siga ofreciendo.
+  const activeRide = await prisma.rideRequest.findFirst({
+    where: {
+      matchedDriverId: driver.id,
+      status: {
+        in: [RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS],
+      },
+    },
+    select: { id: true, status: true },
+  });
+
+  if (activeRide) {
+    return { ok: false as const, status: 409 as const, error: "Driver has an active ride" };
+  }
+
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: { passenger: { select: { userId: true, user: { select: { isActive: true } } } } },
+  });
+  if (!ride) return { ok: false as const, status: 404 as const, error: "Ride not found" };
+  if (!ride.passenger.user.isActive) return { ok: false as const, status: 403 as const, error: "Passenger disabled" };
+
+  if (ride.status !== "OPEN" || ride.matchedDriverId) {
+    return { ok: false as const, status: 400 as const, error: "Ride is not offerable" };
+  }
+
+  if (ride.serviceTypeWanted !== driver.serviceType) {
+    return { ok: false as const, status: 400 as const, error: "Ride service type mismatch" };
+  }
+
+  const dist = haversineDistanceMeters(
+    { lat: Number(driver.location.lat), lng: Number(driver.location.lng) },
+    { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) }
+  );
+  if (dist > ride.searchRadiusM) {
+    return { ok: false as const, status: 400 as const, error: "Ride out of radius" };
+  }
+
+  const existing = await prisma.rideCandidate.findFirst({
+    where: { rideId: ride.id, driverId: driver.id },
+  });
+
+  if (existing?.status === RideCandidateStatus.REJECTED) {
+    return { ok: false as const, status: 409 as const, error: "Passenger rejected this offer" };
+  }
+  if (existing?.status === RideCandidateStatus.SELECTED) {
+    return { ok: false as const, status: 409 as const, error: "Already selected" };
+  }
+
+  const candidate = existing
+    ? await prisma.rideCandidate.update({
+        where: { id: existing.id },
+        data: { status: RideCandidateStatus.OFFERED },
+      })
+    : await prisma.rideCandidate.create({
+        data: { rideId: ride.id, driverId: driver.id, status: RideCandidateStatus.OFFERED },
+      });
+
+  emitToUser(ride.passenger.userId, "ride:offers:changed", { rideId: ride.id });
+
+  return { ok: true as const, candidate };
+}
+
+export async function listRideOffersForPassenger(params: { userId: string; rideId: string }) {
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: { passenger: { select: { userId: true } } },
+  });
+  if (!ride) return { ok: false as const, status: 404 as const, error: "Ride not found" };
+  if (ride.passenger.userId !== params.userId) return { ok: false as const, status: 403 as const, error: "Forbidden" };
+
+  if (ride.status !== "OPEN" || ride.matchedDriverId) {
+    return { ok: true as const, ride, items: [] as any[] };
+  }
+
+  const freshSince = driverLocationFreshSince();
+
+  const offered = await prisma.rideCandidate.findMany({
+    where: { rideId: ride.id, status: RideCandidateStatus.OFFERED },
+    include: {
+      driver: {
+        include: { location: true, vehicle: true, user: { select: { isActive: true } } },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+
+  const items = offered
+    .map((c) => {
+      const d = c.driver;
+      if (!d.user?.isActive) return null;
+      if (!d.location) return null;
+      if (d.location.updatedAt < freshSince) return null;
+
+      const dist = haversineDistanceMeters(
+        { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) },
+        { lat: Number(d.location.lat), lng: Number(d.location.lng) }
+      );
+
+      return {
+        driverId: d.id,
+        fullName: d.fullName,
+        photoUrl: d.photoUrl,
+        serviceType: d.serviceType,
+        vehicle: d.vehicle,
+        driverLocation: {
+          lat: Number(d.location.lat),
+          lng: Number(d.location.lng),
+          updatedAt: d.location.updatedAt,
+        },
+        distanceMeters: Math.round(dist),
+        offeredAt: c.createdAt,
+        whatsappLink: buildWhatsappLink({
+          phoneRaw: d.phone,
+          text: `Hola ${d.fullName}, soy tu pasajero de Xpress Traslados.`,
+        }),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x))
+    // Refiltramos por radio vigente para que la lista se mantenga consistente
+    .filter((x) => x.distanceMeters <= ride.searchRadiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 50);
+
+  return { ok: true as const, ride, items };
+}
+
+export async function rejectRideOfferForPassenger(params: { userId: string; rideId: string; driverId: string }) {
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: { passenger: { select: { userId: true } } },
+  });
+  if (!ride) return { ok: false as const, status: 404 as const, error: "Ride not found" };
+  if (ride.passenger.userId !== params.userId) return { ok: false as const, status: 403 as const, error: "Forbidden" };
+
+  if (ride.status !== "OPEN" || ride.matchedDriverId) {
+    return { ok: false as const, status: 400 as const, error: "Ride is not editable" };
+  }
+
+  const existing = await prisma.rideCandidate.findFirst({
+    where: { rideId: ride.id, driverId: params.driverId },
+  });
+
+  if (!existing) return { ok: false as const, status: 404 as const, error: "Offer not found" };
+  if (existing.status === RideCandidateStatus.REJECTED) return { ok: true as const, candidate: existing };
+  if (existing.status === RideCandidateStatus.SELECTED) {
+    return { ok: false as const, status: 409 as const, error: "Offer already selected" };
+  }
+
+  const updated = await prisma.rideCandidate.update({
+    where: { id: existing.id },
+    data: { status: RideCandidateStatus.REJECTED },
+  });
+
+  emitToUser(params.userId, "ride:offers:changed", { rideId: ride.id });
+
+  return { ok: true as const, candidate: updated };
+}
+
+export async function selectDriver(params: { userId: string; rideId: string; driverId: string }) {
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: { passenger: { select: { userId: true } } },
+  });
+  if (!ride) return { ok: false as const, error: "Ride not found" };
+  if (ride.passenger.userId !== params.userId) return { ok: false as const, error: "Forbidden" };
+
+  if (ride.status !== "OPEN") {
+    return { ok: false as const, error: "Ride is not selectable" };
+  }
+
+  const driver = await prisma.driverProfile.findUnique({
+    where: { id: params.driverId },
+    include: { location: true, vehicle: true, user: { select: { isActive: true } } },
+  });
+
+  if (!driver) return { ok: false as const, error: "Driver not found" };
+  if (!driver.user?.isActive) return { ok: false as const, error: "Driver disabled" };
+  if (!driver.isAvailable) return { ok: false as const, error: "Driver not available" };
+  if (!driver.location) return { ok: false as const, error: "Driver location missing" };
+  if (driver.location.updatedAt < driverLocationFreshSince()) return { ok: false as const, error: "Driver offline" };
+
+  // Si el chofer ya tiene un servicio activo, no puede ser seleccionado en otro.
+  const driverActiveRide = await prisma.rideRequest.findFirst({
+    where: {
+      matchedDriverId: driver.id,
+      id: { not: ride.id },
+      status: {
+        in: [RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS],
+      },
+    },
+    select: { id: true, status: true },
+  });
+
+  if (driverActiveRide) {
+    return { ok: false as const, error: "Driver has an active ride" };
+  }
+
+  const dist = haversineDistanceMeters(
+    { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) },
+    { lat: Number(driver.location.lat), lng: Number(driver.location.lng) }
+  );
+
+  if (dist > ride.searchRadiusM) {
+    return { ok: false as const, error: "Driver out of radius" };
+  }
+
+  const offer = await prisma.rideCandidate.findFirst({
+    where: { rideId: ride.id, driverId: driver.id, status: RideCandidateStatus.OFFERED },
+  });
+  if (!offer) {
+    return { ok: false as const, error: "Driver has not offered this ride" };
+  }
+
+  const now = new Date();
+
+  let updated;
+  let withdrawnOffers: Array<{ rideId: string; passengerUserId: string }> = [];
+  try {
+    const txResult = await prisma.$transaction(async (tx) => {
+      const fresh = await tx.rideRequest.findUnique({ where: { id: ride.id } });
+      if (!fresh || fresh.status !== "OPEN" || fresh.matchedDriverId) {
+        throw new Error("Ride is not selectable");
+      }
+
+      await tx.rideCandidate.update({
+        where: { id: offer.id },
+        data: { status: RideCandidateStatus.SELECTED },
+      });
+
+      await tx.rideCandidate.updateMany({
+        where: { rideId: ride.id, driverId: { not: driver.id }, status: RideCandidateStatus.OFFERED },
+        data: { status: RideCandidateStatus.REJECTED },
+      });
+
+      // Al seleccionar un chofer, retiramos sus otras ofertas pendientes en rides abiertos.
+      const otherOffered = await tx.rideCandidate.findMany({
+        where: {
+          driverId: driver.id,
+          rideId: { not: ride.id },
+          status: RideCandidateStatus.OFFERED,
+          ride: { status: "OPEN", matchedDriverId: null },
+        },
+        select: {
+          rideId: true,
+          ride: { select: { passenger: { select: { userId: true } } } },
+        },
+      });
+
+      await tx.rideCandidate.updateMany({
+        where: {
+          driverId: driver.id,
+          rideId: { not: ride.id },
+          status: RideCandidateStatus.OFFERED,
+          ride: { status: "OPEN", matchedDriverId: null },
+        },
+        data: { status: RideCandidateStatus.WITHDRAWN },
+      });
+
+      const updatedRide = await tx.rideRequest.update({
+        where: { id: ride.id },
+        data: {
+          matchedDriverId: driver.id,
+          matchedAt: now,
+          status: "ACCEPTED",
+          acceptedAt: now,
+          assignedByAdmin: false,
+        },
+        include: {
+          matchedDriver: { include: { vehicle: true, location: true } },
+          passenger: true,
+        },
+      });
+
+      return {
+        ride: updatedRide,
+        withdrawnOffers: otherOffered
+          .map((x) => ({ rideId: x.rideId, passengerUserId: x.ride.passenger.userId }))
+          .filter((x) => Boolean(x.passengerUserId)),
+      };
+    });
+
+    updated = txResult.ride;
+    withdrawnOffers = txResult.withdrawnOffers;
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Ride is not selectable" };
+  }
+
+  emitToUser(params.userId, "ride:matched", { rideId: updated.id, driverId: driver.id });
+  emitToUser(driver.userId, "ride:matched", { rideId: updated.id });
+  emitToUser(params.userId, "ride:offers:changed", { rideId: updated.id });
+
+  for (const item of withdrawnOffers) {
+    emitToUser(item.passengerUserId, "ride:offers:changed", { rideId: item.rideId });
+  }
+
+  void sendPushToUser({
+    userId: params.userId,
+    title: "Servicio aceptado",
+    body: "Tu servicio fue aceptado",
+    soundName: "aceptar_servicio",
+    channelId: "aceptar_servicio",
+    data: { rideId: updated.id, type: "RIDE_ACCEPTED" },
+  });
+
+  sendPushToUserBurst({
+    userId: driver.userId,
+    title: "Nuevo servicio",
+    body: "Fuiste seleccionado para un servicio",
+    soundName: "tienes_servicio",
+    channelId: "tienes_servicio",
+    times: 2,
+    intervalMs: 1200,
+    data: { rideId: updated.id, type: "RIDE_ACCEPTED" },
+  });
+
+  void sendPushToAdmins({
+    title: "Servicio aceptado (auto)",
+    body: `Ride ${updated.id} -> Driver ${driver.id}`,
+    data: { rideId: updated.id, driverId: driver.id, type: "RIDE_ACCEPTED" },
+  });
+
+  return { ok: true as const, ride: updated };
+}
+
+export async function confirmRideComplete(params: {
+  rideId: string;
+  requester: { id: string; role: "ADMIN" | "USER" | "DRIVER" };
+}) {
+  if (params.requester.role === "USER") {
+    return { ok: false as const, status: 403 as const, error: "Passenger confirmation is not supported" };
+  }
+
+  const ride = await prisma.rideRequest.findUnique({
+    where: { id: params.rideId },
+    include: {
+      passenger: { select: { userId: true } },
+      matchedDriver: { select: { userId: true } },
+    },
+  });
+
+  if (!ride) return { ok: false as const, status: 404 as const, error: "Ride not found" };
+  if (ride.status === "CANCELLED" || ride.status === "EXPIRED") {
+    return { ok: false as const, status: 400 as const, error: "Ride is not completable" };
+  }
+
+  const isDriver = params.requester.role === "DRIVER" && ride.matchedDriver?.userId === params.requester.id;
+
+  if (!isDriver && params.requester.role !== "ADMIN") {
+    return { ok: false as const, status: 403 as const, error: "Forbidden" };
+  }
+
+  const now = new Date();
+
+  const closed = await prisma.rideRequest.update({
+    where: { id: ride.id },
+    data: {
+      status: "COMPLETED",
+      completedAt: now,
+      ...(isDriver ? { driverCompletedConfirmedAt: now } : null),
+    },
+    include: {
+      passenger: { include: { user: { select: { id: true, email: true } } } },
+      matchedDriver: { include: { user: { select: { id: true, email: true } }, vehicle: true, location: true } },
+      addons: { include: { addon: true } },
+      ratings: true,
+    },
+  });
+
+  // Descontar créditos al chofer (idempotente). (Se deja para lo último: flag)
+  void chargeDriverCreditsForCompletedRide({ rideId: closed.id, now });
+
+  return { ok: true as const, ride: closed };
+}

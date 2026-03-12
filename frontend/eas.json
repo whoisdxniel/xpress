@@ -1,0 +1,37 @@
+{
+  "cli": {
+    "version": ">= 10.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://TU_IP_LAN:3001/api",
+        "EXPO_PUBLIC_OSRM_BASE_URL": "https://router.project-osrm.org"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://TU_IP_LAN:3001/api",
+        "EXPO_PUBLIC_OSRM_BASE_URL": "https://router.project-osrm.org"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://xpress.tumarcaagencia.com/api",
+        "EXPO_PUBLIC_OSRM_BASE_URL": "https://router.project-osrm.org"
+      }
+    }
+  }
+}

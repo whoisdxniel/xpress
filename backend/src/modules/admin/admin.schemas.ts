@@ -1,0 +1,112 @@
+import { z } from "zod";
+
+export const CreateDriverSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).optional(),
+  fullName: z.string().min(2),
+  phone: z.string().min(6),
+  photoUrl: z.string().min(1),
+  serviceType: z.enum(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"]),
+  vehicle: z.object({
+    brand: z.string().min(1),
+    model: z.string().min(1),
+    year: z.coerce.number().int().min(1980).max(2100),
+    color: z.string().min(1),
+    doors: z.coerce.number().int().min(1).max(10).optional(),
+    hasAC: z.coerce.boolean().default(false),
+    hasTrunk: z.coerce.boolean().default(false),
+    allowsPets: z.coerce.boolean().default(false),
+  }),
+  documents: z.object({
+    vehiclePhotoUrls: z.array(z.string().min(1)).min(1),
+  }),
+});
+
+export const UpdateDriverStatusSchema = z.object({
+  status: z.enum(["OBSERVATION", "APPROVED", "REJECTED"]),
+});
+
+export const UpsertPricingSchema = z.object({
+  baseFare: z.coerce.number().nonnegative(),
+  perKm: z.coerce.number().nonnegative().optional().default(0),
+
+  // Pricing por tramos (opcional: si stepMeters es 0, no aplica)
+  includedMeters: z.coerce.number().int().nonnegative().optional().default(0),
+  stepMeters: z.coerce.number().int().nonnegative().optional().default(0),
+  stepPrice: z.coerce.number().nonnegative().optional().default(0),
+  acSurcharge: z.coerce.number().nonnegative().default(0),
+  trunkSurcharge: z.coerce.number().nonnegative().default(0),
+  petsSurcharge: z.coerce.number().nonnegative().default(0),
+});
+
+export const AssignRideDriverSchema = z.object({
+  driverId: z.string().min(1),
+});
+
+export const CreatePricingAddonSchema = z.object({
+  serviceType: z.enum(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"]),
+  name: z.string().min(1).max(80),
+  amount: z.coerce.number().nonnegative(),
+  isActive: z.coerce.boolean().default(true),
+});
+
+export const UpdatePricingAddonSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  amount: z.coerce.number().nonnegative().optional(),
+  isActive: z.coerce.boolean().optional(),
+});
+
+export const AdjustDriverCreditsSchema = z.object({
+  // Delta en COP (puede ser negativo para descuento manual)
+  deltaCop: z.coerce.number().int().min(-1_000_000_000).max(1_000_000_000),
+});
+
+export const SetDriverActiveSchema = z.object({
+  isActive: z.coerce.boolean(),
+});
+
+export const UpdateDriverSchema = z.object({
+  email: z.string().email().optional(),
+  fullName: z.string().min(2).optional(),
+  phone: z.string().min(6).optional(),
+  photoUrl: z.string().min(1).optional(),
+  serviceType: z.enum(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"]).optional(),
+  creditChargeFixedCop: z.coerce.number().int().min(0).max(1_000_000_000).optional().nullable(),
+  vehicle: z
+    .object({
+      brand: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+      plate: z.string().min(1).optional().nullable(),
+      year: z.coerce.number().int().min(1980).max(2100).optional(),
+      color: z.string().min(1).optional(),
+      doors: z.coerce.number().int().min(1).max(10).optional().nullable(),
+      hasAC: z.coerce.boolean().optional(),
+      hasTrunk: z.coerce.boolean().optional(),
+      allowsPets: z.coerce.boolean().optional(),
+    })
+    .optional(),
+  documents: z
+    .object({
+      vehiclePhotoUrls: z.array(z.string().min(1)).min(1).optional(),
+    })
+    .optional(),
+});
+
+export const UpdateAppConfigSchema = z.object({
+  // (Compat) Pricing global: si se envía, se replica a todos los serviceType.
+  // En la app nueva, el pricing se edita por tipo vía /admin/pricing.
+  pricingBaseFare: z.coerce.number().nonnegative().optional(),
+  pricingPerKm: z.coerce.number().nonnegative().optional(),
+
+  pricingIncludedMeters: z.coerce.number().int().nonnegative().optional(),
+  pricingStepMeters: z.coerce.number().int().nonnegative().optional(),
+  pricingStepPrice: z.coerce.number().nonnegative().optional(),
+
+  // Noche
+  nightBaseFare: z.coerce.number().nonnegative(),
+  nightStartHour: z.coerce.number().int().min(0).max(23),
+
+  // Débito chofer
+  driverCreditChargePercent: z.coerce.number().min(0).max(100).optional().default(0),
+  driverCreditChargeMode: z.enum(["SERVICE_VALUE", "FIXED_AMOUNT"]).optional().default("SERVICE_VALUE"),
+});

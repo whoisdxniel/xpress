@@ -1,0 +1,740 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT, type LatLng, type Region } from "react-native-maps";
+import * as Location from "expo-location";
+import { Ionicons } from "@expo/vector-icons";
+
+import { Screen } from "../components/Screen";
+import { Card } from "../components/Card";
+import { GoldTitle } from "../components/GoldTitle";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { SecondaryButton } from "../components/SecondaryButton";
+import { colors } from "../theme/colors";
+import { useAuth } from "../auth/AuthContext";
+import { apiCreateRide, apiNearbyDrivers } from "../rides/rides.api";
+import type { NearbyDriver, ServiceType } from "../rides/rides.types";
+import { apiEstimateOffer } from "../offers/offers.api";
+import { buildWhatsappLink } from "../utils/whatsapp";
+import { serviceTypeHasCargo, serviceTypeIconName, serviceTypeLabel } from "../utils/serviceType";
+import { absoluteUrl } from "../utils/url";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../navigation/AppNavigator";
+import { getLastCoords } from "../lib/locationCache";
+import { ensureForegroundPermission, getCurrentCoords, getFastCoords } from "../utils/location";
+import { setActiveRideOffersRideId } from "../lib/storage";
+
+type Props = NativeStackScreenProps<RootStackParamList, "PassengerDriversMap">;
+
+const zoeImg = require("../../assets/zoe.png");
+
+function formatAgo(updatedAtIso: string) {
+  const t = new Date(updatedAtIso).getTime();
+  const diff = Math.max(0, Date.now() - t);
+  const sec = Math.round(diff / 1000);
+  if (sec < 60) return `hace ${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `hace ${min}m`;
+  const hr = Math.round(min / 60);
+  return `hace ${hr}h`;
+}
+
+function formatReverseGeocoded(addr: Location.LocationGeocodedAddress | null | undefined) {
+  if (!addr) return null;
+
+  const street = [addr.street, addr.name].filter(Boolean).join(" ").trim();
+  const district = (addr.district || addr.subregion || "").trim();
+  const city = (addr.city || addr.region || "").trim();
+
+  const first = [street, district].filter(Boolean).join(", ").trim();
+  const full = [first, city].filter(Boolean).join(", ").trim();
+  return full || null;
+}
+
+function downsampleRoutePath(path: { lat: number; lng: number }[], maxPoints: number) {
+  const max = Math.max(2, Math.floor(maxPoints));
+  if (path.length <= max) return path;
+
+  const stride = Math.ceil(path.length / max);
+  const out: { lat: number; lng: number }[] = [];
+  for (let i = 0; i < path.length; i += stride) out.push(path[i]);
+
+  const last = path[path.length - 1];
+  const lastOut = out[out.length - 1];
+  if (!lastOut || lastOut.lat !== last.lat || lastOut.lng !== last.lng) out.push(last);
+  return out.length > max ? out.slice(0, max) : out;
+}
+
+export function PassengerDriversMapScreen({ navigation }: Props) {
+  const auth = useAuth();
+  const token = auth.token;
+
+  const mapRef = useRef<MapView | null>(null);
+
+  // Fallback inmediato mientras se obtiene GPS real.
+  const fallbackCenter = useMemo(() => ({ lat: 7.7669, lng: -72.2250 }), []);
+
+  const [center, setCenter] = useState<{ lat: number; lng: number }>(fallbackCenter);
+  const [items, setItems] = useState<NearbyDriver[]>([]);
+  const [selected, setSelected] = useState<NearbyDriver | null>(null);
+  const [wantedType, setWantedType] = useState<ServiceType>("CARRO");
+  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [loadingDrivers, setLoadingDrivers] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
+
+  const [dropoff, setDropoff] = useState<{ lat: number; lng: number } | null>(null);
+  const [pickupAddress, setPickupAddress] = useState<string | null>(null);
+  const [dropoffAddress, setDropoffAddress] = useState<string | null>(null);
+
+  const [estimating, setEstimating] = useState(false);
+  const [estimate, setEstimate] = useState<{
+    distanceMeters: number;
+    estimatedPrice: number;
+    routePath?: { lat: number; lng: number }[] | null;
+  } | null>(null);
+
+  const operatorPhone = useMemo(() => {
+    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
+    return (fromEnv && fromEnv.trim()) || "04245687814";
+  }, []);
+
+  const operatorLink = useMemo(() => {
+    return buildWhatsappLink({
+      phone: operatorPhone,
+      text: "Hola, necesito ayuda de ZOE.",
+    });
+  }, [operatorPhone]);
+
+  async function openOperator() {
+    await Linking.openURL(operatorLink);
+  }
+
+  const region: Region = useMemo(() => {
+    const lat = center?.lat ?? fallbackCenter.lat;
+    const lng = center?.lng ?? fallbackCenter.lng;
+    return { latitude: lat, longitude: lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+  }, [center?.lat, center?.lng, fallbackCenter.lat, fallbackCenter.lng]);
+
+  const locationReadyRef = useRef(false);
+  const driversLoadedRef = useRef(false);
+  const locationSeqRef = useRef(0);
+  const driversSeqRef = useRef(0);
+
+  async function refreshLocation(opts?: { showError?: boolean; animate?: boolean }) {
+    const showError = opts?.showError ?? true;
+    const animate = opts?.animate ?? true;
+
+    const mySeq = ++locationSeqRef.current;
+    const showSpinner = !locationReadyRef.current;
+    if (showSpinner) setLoadingLocation(true);
+    try {
+      const ok = await ensureForegroundPermission();
+      if (!ok) throw new Error("Necesitás habilitar la ubicación para ver ejecutivos cercanos");
+
+      const fast = await getFastCoords();
+      if (mySeq !== locationSeqRef.current) return;
+
+      if (fast) {
+        setCenter(fast);
+        locationReadyRef.current = true;
+        if (showSpinner) setLoadingLocation(false);
+
+        if (animate) {
+          mapRef.current?.animateToRegion(
+            { latitude: fast.lat, longitude: fast.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 },
+            350
+          );
+        }
+      }
+
+      // GPS “real” (con timeout) sin trabar el UI.
+      try {
+        const current = await getCurrentCoords();
+        if (mySeq !== locationSeqRef.current) return;
+        setCenter(current);
+        setEstimate(null);
+        locationReadyRef.current = true;
+
+        if (animate) {
+          mapRef.current?.animateToRegion(
+            { latitude: current.lat, longitude: current.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 },
+            350
+          );
+        }
+      } catch {
+        // Silencioso: con fast coords ya se puede usar.
+      }
+    } catch (e) {
+      if (showError) {
+        setError(e instanceof Error ? e.message : "No se pudo obtener tu ubicación");
+      }
+    } finally {
+      if (showSpinner) setLoadingLocation(false);
+    }
+  }
+
+  useEffect(() => {
+    // Centro instantáneo desde cache (no pide permisos).
+    void (async () => {
+      const cached = await getLastCoords({ maxAgeMs: 6 * 60 * 60 * 1000 });
+      if (cached) setCenter(cached);
+    })();
+
+    const tokenStr = token;
+    if (!tokenStr) return;
+
+    setError(null);
+    void refreshLocation({ showError: true, animate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  useEffect(() => {
+    let alive = true;
+    const tokenStr = token;
+    const centerVal = center;
+    if (!tokenStr || !centerVal) return;
+
+    const mySeq = ++driversSeqRef.current;
+
+    async function refresh(tokenForReq: string, centerForReq: { lat: number; lng: number }, serviceType: ServiceType) {
+      try {
+        const res = await apiNearbyDrivers(tokenForReq, {
+          lat: centerForReq.lat,
+          lng: centerForReq.lng,
+          radiusM: 2000,
+          serviceType,
+        });
+        if (!alive || mySeq !== driversSeqRef.current) return;
+        setItems(res.items);
+      } catch {
+        // Silencioso: la UI de error la dejamos para el primer load.
+      }
+    }
+
+    // Primer load con error visible
+    (async () => {
+      setError(null);
+      const showSpinner = !driversLoadedRef.current;
+      if (showSpinner) setLoadingDrivers(true);
+      try {
+        const res = await apiNearbyDrivers(tokenStr, {
+          lat: centerVal.lat,
+          lng: centerVal.lng,
+          radiusM: 2000,
+          serviceType: wantedType,
+        });
+        if (!alive || mySeq !== driversSeqRef.current) return;
+        setItems(res.items);
+      } catch (e) {
+        if (!alive || mySeq !== driversSeqRef.current) return;
+        setError(e instanceof Error ? e.message : "No se pudo cargar los ejecutivos");
+      } finally {
+        if (!alive || mySeq !== driversSeqRef.current) return;
+        if (showSpinner) setLoadingDrivers(false);
+        driversLoadedRef.current = true;
+      }
+    })();
+
+    const timer = setInterval(() => {
+      void refresh(tokenStr, centerVal, wantedType);
+    }, 5000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [token, center, wantedType]);
+
+  async function onSelectServiceType(next: ServiceType) {
+    setWantedType(next);
+    setSelected(null);
+    setError(null);
+    setEstimate(null);
+    // Pediste que al tocar cualquiera opción recargue ubicación actual.
+    void refreshLocation({ showError: false, animate: false });
+  }
+
+  async function ensureAddresses(params: { pickup: { lat: number; lng: number }; dropoff: { lat: number; lng: number } }) {
+    try {
+      const [p, d] = await Promise.all([
+        Location.reverseGeocodeAsync({ latitude: params.pickup.lat, longitude: params.pickup.lng }),
+        Location.reverseGeocodeAsync({ latitude: params.dropoff.lat, longitude: params.dropoff.lng }),
+      ]);
+
+      const pAddr = formatReverseGeocoded(p?.[0]);
+      const dAddr = formatReverseGeocoded(d?.[0]);
+
+      if (pAddr) setPickupAddress(pAddr);
+      if (dAddr) setDropoffAddress(dAddr);
+
+      return { pickupAddress: pAddr ?? pickupAddress, dropoffAddress: dAddr ?? dropoffAddress };
+    } catch {
+      return { pickupAddress, dropoffAddress };
+    }
+  }
+
+  async function estimateApprox() {
+    if (!token) return;
+    if (!center) return;
+    if (!dropoff) {
+      setError("Tocá el mapa para elegir el destino");
+      return;
+    }
+
+    setEstimating(true);
+    setError(null);
+
+    try {
+      const addr = await ensureAddresses({ pickup: center, dropoff });
+      const res = await apiEstimateOffer(token, {
+        serviceTypeWanted: wantedType,
+        pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
+        dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
+      });
+
+      setEstimate({
+        distanceMeters: res.distanceMeters,
+        estimatedPrice: res.estimatedPrice,
+        routePath: Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : null,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo calcular el aproximado");
+    } finally {
+      setEstimating(false);
+    }
+  }
+
+  async function requestAvailableExecutives() {
+    if (!token || !center) return;
+    if (!dropoff) {
+      setError("Tocá el mapa para elegir el destino");
+      return;
+    }
+    setRequesting(true);
+    setError(null);
+
+    try {
+      const addr = await ensureAddresses({ pickup: center, dropoff });
+      const created = await apiCreateRide(token, {
+        serviceTypeWanted: wantedType,
+        pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
+        dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
+        searchRadiusM: 2000,
+      });
+
+      await setActiveRideOffersRideId(created.ride.id);
+
+      navigation.replace("PassengerOffersWait", { rideId: created.ride.id });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo solicitar el ejecutivo");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  if (auth.user?.role !== "USER") {
+    return (
+      <Screen>
+        <Card style={{ marginTop: 16 }}>
+          <Text style={{ color: colors.text, fontWeight: "900" }}>Solo disponible para clientes</Text>
+        </Card>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen style={{ padding: 0 }}>
+      <View style={styles.topBar}>
+        <View style={styles.topBarLeft}>
+          <Ionicons name="map-outline" size={18} color={colors.gold} />
+          <GoldTitle>Ejecutivos cercanos</GoldTitle>
+        </View>
+
+        <Pressable style={styles.operatorBtn} onPress={() => void openOperator()}>
+          <Image source={zoeImg} style={styles.operatorImg} resizeMode="contain" />
+          <Text style={styles.operatorText}>ZOE</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.mapWrap}>
+        <MapView
+          ref={(r) => {
+            mapRef.current = r;
+          }}
+          style={StyleSheet.absoluteFill}
+          provider={PROVIDER_DEFAULT}
+          initialRegion={region}
+          onPress={(e) => {
+            if ((e.nativeEvent as any)?.action === "marker-press") return;
+            const c = e.nativeEvent.coordinate;
+            setDropoff({ lat: c.latitude, lng: c.longitude });
+            setDropoffAddress(null);
+            setEstimate(null);
+          }}
+        >
+          <Marker
+            coordinate={{ latitude: center.lat, longitude: center.lng }}
+            title="Vos"
+            description="Tu ubicación"
+            pinColor={colors.gold}
+          />
+
+          {dropoff ? (
+            <Marker
+              coordinate={{ latitude: dropoff.lat, longitude: dropoff.lng }}
+              title="Destino"
+              description={dropoffAddress ?? "Destino"}
+            >
+              <View style={styles.destMarkerWrap}>
+                <View style={styles.destMarkerInner}>
+                  <Ionicons name="navigate" size={18} color={colors.bg} />
+                </View>
+              </View>
+            </Marker>
+          ) : null}
+
+          {estimate?.routePath?.length ? (
+            <Polyline
+              coordinates={estimate.routePath
+                .map((p) => ({ latitude: p.lat, longitude: p.lng }))
+                .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)) as LatLng[]}
+              strokeColor={colors.gold}
+              strokeWidth={4}
+            />
+          ) : null}
+
+          {items
+            .filter((d) => !!d.location)
+            .map((d) => (
+              <Marker
+                key={d.driverId}
+                coordinate={{ latitude: d.location!.lat, longitude: d.location!.lng }}
+                title={d.fullName}
+                description={d.location ? `Actualizado ${formatAgo(d.location.updatedAt)}` : ""}
+                onPress={() => setSelected(d)}
+                pinColor={colors.danger}
+              />
+            ))}
+        </MapView>
+
+        {loadingLocation || (loadingDrivers && !driversLoadedRef.current) ? (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator color={colors.gold} />
+            <Text style={styles.loadingText}>{loadingLocation ? "Obteniendo ubicación..." : "Buscando ejecutivos..."}</Text>
+          </View>
+        ) : null}
+
+        {!!error ? (
+          <View style={styles.errorOverlay}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.estimateBar}>
+          <Card style={{ gap: 8 }}>
+            <PrimaryButton
+              label={estimating ? "Calculando..." : "Calcular aproximado"}
+              onPress={() => void estimateApprox()}
+              disabled={estimating || loadingLocation}
+            />
+
+            {estimate ? (
+              <View style={styles.estimateBigRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.estimateLabel}>Distancia</Text>
+                  <Text style={styles.estimateBigLine}> {Math.round(estimate.distanceMeters)} m</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: "flex-end" }}>
+                  <Text style={styles.estimateLabel}>Monto</Text>
+                  <Text style={styles.estimateBigLine}>${Number(estimate.estimatedPrice).toFixed(2)}</Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.estimateHint}>Tocá el mapa para elegir destino y calculá.</Text>
+            )}
+          </Card>
+        </View>
+
+        <View style={styles.typeBar}>
+          {(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"] as const).map((t) => {
+            const active = wantedType === t;
+            const iconColor = active ? colors.gold : colors.mutedText;
+            const textColor = active ? colors.gold : colors.mutedText;
+
+            return (
+              <Pressable
+                key={t}
+                style={[styles.typeBtn, active ? styles.typeBtnActive : null]}
+                onPress={() => void onSelectServiceType(t)}
+              >
+                <View style={styles.typeIconWrap}>
+                  <Ionicons name={serviceTypeIconName(t)} size={18} color={iconColor} />
+                  {serviceTypeHasCargo(t) ? (
+                    <View style={styles.typeCargoBadge}>
+                      <Ionicons name="cube-outline" size={11} color={iconColor} />
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text style={[styles.typeText, { color: textColor }]}>{serviceTypeLabel(t)}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.requestBar}>
+        <PrimaryButton
+          label={requesting ? "Solicitando..." : "Solicitar ejecutivos disponibles"}
+          onPress={() => void requestAvailableExecutives()}
+          disabled={requesting || loadingLocation}
+        />
+      </View>
+
+      {selected ? (
+        <View style={styles.sheet}>
+          <Card style={{ gap: 10 }}>
+            <View style={styles.sheetTitleRow}>
+              <Ionicons name={serviceTypeIconName(selected.serviceType)} size={18} color={colors.gold} />
+              <Text style={styles.sheetTitle}>{selected.fullName}</Text>
+            </View>
+
+            {selected.photoUrl ? (
+              <View style={styles.photoRow}>
+                <Image source={{ uri: absoluteUrl(selected.photoUrl) ?? undefined }} style={styles.photo} resizeMode="cover" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetLine}>Servicio: {serviceTypeLabel(selected.serviceType)}</Text>
+                  <Text style={styles.sheetLine}>Distancia: {Math.round(selected.distanceMeters)} m</Text>
+                </View>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.sheetLine}>Servicio: {serviceTypeLabel(selected.serviceType)}</Text>
+                <Text style={styles.sheetLine}>Distancia: {Math.round(selected.distanceMeters)} m</Text>
+              </>
+            )}
+            {selected.location ? <Text style={styles.sheetLine}>Última actualización: {formatAgo(selected.location.updatedAt)}</Text> : null}
+
+            {selected.vehicle ? (
+              <Text style={styles.sheetLine}>
+                Vehículo: {selected.vehicle.brand} {selected.vehicle.model} {selected.vehicle.year} • {selected.vehicle.color}
+              </Text>
+            ) : (
+              <Text style={styles.sheetLine}>Vehículo: (sin datos)</Text>
+            )}
+
+            <SecondaryButton label="Cerrar" onPress={() => setSelected(null)} disabled={requesting} />
+          </Card>
+        </View>
+      ) : null}
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  topBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  topBarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  operatorBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: colors.card,
+    shadowColor: colors.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  operatorImg: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  operatorText: {
+    marginTop: 2,
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  mapWrap: {
+    flex: 1,
+    position: "relative",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 12,
+    left: 16,
+    right: 16,
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  loadingText: {
+    color: colors.mutedText,
+    fontWeight: "700",
+  },
+  destMarkerWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  destMarkerInner: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.text,
+    borderWidth: 2,
+    borderColor: colors.bg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorOverlay: {
+    position: "absolute",
+    top: 12,
+    left: 16,
+    right: 16,
+    backgroundColor: colors.card,
+    borderColor: colors.danger,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  errorText: {
+    color: colors.danger,
+    fontWeight: "800",
+  },
+  estimateBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 104,
+  },
+  estimateBigRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  estimateLabel: {
+    color: colors.mutedText,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  estimateBigLine: {
+    color: colors.text,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "900",
+  },
+  estimateHint: {
+    color: colors.mutedText,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  typeBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 12,
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: colors.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  typeBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 74,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  typeBtnActive: {
+    borderColor: colors.gold,
+  },
+  typeIconWrap: {
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeCargoBadge: {
+    position: "absolute",
+    right: -8,
+    top: -8,
+  },
+  typeText: {
+    marginTop: 4,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  requestBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  sheet: {
+    padding: 16,
+  },
+  sheetTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  sheetTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  sheetLine: {
+    color: colors.mutedText,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  photoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  photo: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+});

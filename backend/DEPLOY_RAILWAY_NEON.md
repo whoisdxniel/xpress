@@ -22,6 +22,11 @@ Ejemplo (Neon suele requerir SSL):
 
 `start:railway` corre `prisma migrate deploy` y luego arranca el server.
 
+### Troubleshooting (Prisma)
+
+- `P3009` (failed migrations): hay una migración marcada como fallida en la tabla `_prisma_migrations`. Si la DB no tiene datos importantes todavía, lo más simple es resetear el schema (por ejemplo `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`) y redeploy.
+- `42601` con `\u{feff}` / `-- CreateEnum`: el archivo `migration.sql` tiene BOM UTF-8. Hay que reescribirlo como UTF-8 **sin** BOM y luego limpiar el estado de la migración fallida en la DB.
+
 ## 3) Variables de entorno (Railway)
 
 Mínimas:

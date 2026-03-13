@@ -1,13 +1,31 @@
 import React from "react";
-import { SafeAreaView, StyleSheet, View, type ViewStyle } from "react-native";
+import { KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, type ViewStyle } from "react-native";
 import { colors } from "../theme/colors";
 import { AnimatedBackdrop } from "./AnimatedBackdrop";
 
-export function Screen(props: { children: React.ReactNode; style?: ViewStyle }) {
+export function Screen(props: {
+  children: React.ReactNode;
+  style?: ViewStyle;
+  keyboardAvoiding?: boolean;
+  keyboardVerticalOffset?: number;
+}) {
+  const keyboardAvoiding = props.keyboardAvoiding ?? false;
+  const keyboardVerticalOffset = props.keyboardVerticalOffset ?? 0;
+
   return (
     <SafeAreaView style={styles.safe}>
       <AnimatedBackdrop />
-      <View style={[styles.content, props.style]}>{props.children}</View>
+      {keyboardAvoiding ? (
+        <KeyboardAvoidingView
+          style={[styles.content, props.style]}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={keyboardVerticalOffset}
+        >
+          {props.children}
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={[styles.content, props.style]}>{props.children}</View>
+      )}
     </SafeAreaView>
   );
 }

@@ -197,7 +197,7 @@ export function ProfileScreen() {
   }
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding>
       <ScrollView contentContainerStyle={{ paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>

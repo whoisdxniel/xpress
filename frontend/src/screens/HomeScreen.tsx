@@ -33,6 +33,7 @@ import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from
 import { clearActiveRideOffersRideId, getActiveRideOffersRideId } from "../lib/storage";
 
 const zoeImg = require("../../assets/zoe.png");
+const playstoreImg = require("../../assets/playstore.png");
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -1258,6 +1259,10 @@ export function HomeScreen({ navigation }: Props) {
 
         <View style={{ height: 14 }} />
         <PrimaryButton label="Cerrar sesión" onPress={() => void auth.logout()} />
+
+        <View style={styles.footerBrand}>
+          <Image source={playstoreImg} style={styles.footerBrandImg} resizeMode="contain" />
+        </View>
       </ScrollView>
 
     </Screen>
@@ -1289,6 +1294,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 6,
     elevation: 2,
+  },
+  footerBrand: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
+  },
+  footerBrandImg: {
+    width: 320,
+    height: 90,
   },
   operatorImg: {
     width: 46,

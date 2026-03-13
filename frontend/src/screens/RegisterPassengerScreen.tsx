@@ -64,7 +64,7 @@ export function RegisterPassengerScreen() {
   }
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <Text style={styles.title}>Registro (Cliente)</Text>

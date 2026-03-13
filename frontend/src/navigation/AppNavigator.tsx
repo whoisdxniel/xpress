@@ -69,7 +69,7 @@ export function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        screenOptions={({ navigation }) => ({
+        screenOptions={({ navigation, route }) => ({
           headerStyle: { backgroundColor: colors.bg },
           headerTintColor: colors.text,
           contentStyle: { backgroundColor: colors.bg },
@@ -77,6 +77,14 @@ export function AppNavigator() {
           headerTitle: () => null,
           headerLeft: () => {
             const canGoBack = navigation.canGoBack();
+            const hideLogo =
+              route.name === "Login" ||
+              route.name === "RegisterPassenger" ||
+              route.name === "PasswordResetRequest" ||
+              route.name === "PasswordResetVerify" ||
+              route.name === "PasswordResetConfirm";
+
+            if (hideLogo && !canGoBack) return null;
 
             return (
               <View style={styles.headerLeftRow}>
@@ -92,7 +100,7 @@ export function AppNavigator() {
                   </Pressable>
                 ) : null}
 
-                <LogoMark size={54} />
+                {!hideLogo ? <LogoMark size={54} /> : null}
               </View>
             );
           },

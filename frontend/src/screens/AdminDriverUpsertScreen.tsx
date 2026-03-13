@@ -338,7 +338,7 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
   const photoAbs = absoluteUrl(photoUrl);
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>

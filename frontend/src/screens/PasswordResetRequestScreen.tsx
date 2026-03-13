@@ -48,7 +48,7 @@ export function PasswordResetRequestScreen({ route, navigation }: Props) {
   }
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <Text style={styles.title}>Recuperar contraseña</Text>

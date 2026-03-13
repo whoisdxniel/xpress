@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { z } from "zod";
 import { Screen } from "../components/Screen";
@@ -60,7 +60,7 @@ export function LoginScreen({ navigation }: Props) {
   }
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding>
       <Modal visible={loading} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingBackdrop} />
@@ -72,17 +72,18 @@ export function LoginScreen({ navigation }: Props) {
       </Modal>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.brandRow}>
-          <LogoMark size={96} />
-          <Text style={styles.subtitle}>Accedé a tu cuenta</Text>
-        </View>
+        <View style={styles.content}>
+          <View style={styles.brandRow}>
+            <LogoMark size={96} />
+            <Text style={styles.subtitle}>Accedé a tu cuenta</Text>
+          </View>
 
-        <View style={styles.mainHeader}>
-          <Ionicons name="log-in-outline" size={22} color={colors.gold} />
-          <Text style={styles.mainHeaderText}>Inicio de sesión</Text>
-        </View>
+          <View style={styles.mainHeader}>
+            <Ionicons name="log-in-outline" size={22} color={colors.gold} />
+            <Text style={styles.mainHeaderText}>Inicio de sesión</Text>
+          </View>
 
-        <View style={styles.form}>
+          <View style={styles.form}>
           <TextField
             label="Usuario"
             labelIconName="person-outline"
@@ -114,6 +115,11 @@ export function LoginScreen({ navigation }: Props) {
             <Text style={styles.link}>Crear cuenta (solo cliente)</Text>
           </Pressable>
           <Text style={styles.hint}>Ejecutivos y admin los crea el administrador.</Text>
+          </View>
+
+          <View style={styles.footerBrand}>
+            <Image source={require("../../assets/playstore.png")} style={styles.footerBrandImg} resizeMode="contain" />
+          </View>
         </View>
       </ScrollView>
     </Screen>
@@ -124,6 +130,11 @@ const styles = StyleSheet.create({
   scroll: {
     paddingTop: 24,
     paddingBottom: 48,
+    flexGrow: 1,
+  },
+  content: {
+    flexGrow: 1,
+    justifyContent: "space-between",
     gap: 18,
   },
   brandRow: {
@@ -157,6 +168,15 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.mutedText,
     fontSize: 13,
+  },
+  footerBrand: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  footerBrandImg: {
+    width: 320,
+    height: 90,
   },
   mainHeader: {
     flexDirection: "row",

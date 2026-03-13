@@ -200,6 +200,7 @@ model CreditAccount {
   id         String   @id @default(cuid())
   userId     String   @unique
   balanceCop Int      @default(0)
+  lowCreditsPushSentAt DateTime?
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

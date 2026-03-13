@@ -711,6 +711,10 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
 
   if (!driver) return { ok: false as const, error: "Driver not found" };
   if (!driver.user?.isActive) return { ok: false as const, error: "Driver disabled" };
+
+  const credits = await ensureDriverHasMinCredits({ userId: driver.userId, audience: "USER" });
+  if (!credits.ok) return { ok: false as const, status: credits.status, error: credits.error };
+
   if (!driver.isAvailable) return { ok: false as const, error: "Driver not available" };
   if (!driver.location) return { ok: false as const, error: "Driver location missing" };
   if (driver.location.updatedAt < driverLocationFreshSince()) return { ok: false as const, error: "Driver offline" };

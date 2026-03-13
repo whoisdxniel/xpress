@@ -159,7 +159,10 @@ export async function selectRideDriverController(req: Request, res: Response) {
   const input = SelectDriverSchema.parse(req.body);
 
   const result = await selectDriver({ userId, rideId, driverId: input.driverId });
-  if (!result.ok) return res.status(400).json({ message: result.error });
+  if (!result.ok) {
+    const status = (result as any).status;
+    return res.status(typeof status === "number" ? status : 400).json({ message: result.error });
+  }
 
   return res.status(200).json(result);
 }

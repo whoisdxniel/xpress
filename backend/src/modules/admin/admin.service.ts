@@ -3,6 +3,7 @@ import { DocumentType, DriverStatus, ServiceType, UserRole } from "@prisma/clien
 import { prisma } from "../../db/prisma";
 import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
 import { APP_CONFIG_ID, DEFAULT_APP_CONFIG, getAppConfig } from "../config/appConfig.service";
+import { ensureDriverHasMinCredits } from "../credits/credits.service";
 
 function generatePassword(len = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -258,6 +259,9 @@ export async function assignRideDriverByAdmin(params: { rideId: string; driverId
   if (!driver.user?.isActive) return { ok: false as const, error: "Driver disabled" };
   if (driver.serviceType !== ride.serviceTypeWanted)
     return { ok: false as const, error: "Driver serviceType mismatch" };
+
+  const credits = await ensureDriverHasMinCredits({ userId: driver.userId, audience: "ADMIN" });
+  if (!credits.ok) return { ok: false as const, status: credits.status, error: credits.error };
 
   const updated = await prisma.rideRequest.update({
     where: { id: ride.id },

@@ -1,7 +1,24 @@
 import { prisma } from "../../db/prisma";
 import { getAppConfig } from "../config/appConfig.service";
+import { sendPushToUser } from "../notifications/notifications.service";
 
 export const MIN_DRIVER_CREDITS_COP_TO_OPERATE = 15000;
+
+const LOW_CREDITS_PUSH_COOLDOWN_MINUTES = 60;
+
+type LowCreditsAudience = "DRIVER" | "ADMIN" | "USER";
+
+function lowCreditsMessage(params: { audience: LowCreditsAudience; balanceCop: number; minCop: number }) {
+  const base =
+    "Tu saldo no cuenta con el mínimo para seguir prestando el servicio. Comunicate con la operadora o acercate a la oficina para recargar.";
+
+  if (params.audience === "DRIVER") {
+    return `Saldo insuficiente. ${base} (Saldo: ${params.balanceCop} COP, mínimo: ${params.minCop} COP).`;
+  }
+
+  // No filtrar balance del chofer a terceros.
+  return "El chofer no cuenta con el saldo mínimo para seguir prestando el servicio. Seleccioná otro chofer o solicitá que recargue.";
+}
 
 export async function getOrCreateCreditAccount(params: { userId: string }) {
   return prisma.creditAccount.upsert({
@@ -16,15 +33,54 @@ export async function getMyCredits(params: { userId: string }) {
   return { ok: true as const, balanceCop: account.balanceCop };
 }
 
-export async function ensureDriverHasMinCredits(params: { userId: string; minCop?: number }) {
+export async function ensureDriverHasMinCredits(params: {
+  userId: string;
+  minCop?: number;
+  audience?: LowCreditsAudience;
+  notify?: boolean;
+  notifyCooldownMinutes?: number;
+}) {
   const minCop = Math.max(0, Math.round(Number(params.minCop ?? MIN_DRIVER_CREDITS_COP_TO_OPERATE)));
+  const audience: LowCreditsAudience = params.audience ?? "DRIVER";
+  const notify = params.notify !== false;
+  const notifyCooldownMinutes = Math.min(
+    24 * 60,
+    Math.max(1, Math.floor(params.notifyCooldownMinutes ?? LOW_CREDITS_PUSH_COOLDOWN_MINUTES))
+  );
   const account = await getOrCreateCreditAccount({ userId: params.userId });
 
   if (account.balanceCop < minCop) {
+    if (notify) {
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - notifyCooldownMinutes * 60_000);
+
+      // Throttle persistido (multi-instancia safe): sólo 1 request por ventana envía push.
+      const mark = await prisma.creditAccount.updateMany({
+        where: {
+          userId: params.userId,
+          OR: [{ lowCreditsPushSentAt: null }, { lowCreditsPushSentAt: { lt: cutoff } }],
+        },
+        data: { lowCreditsPushSentAt: now },
+      });
+
+      if (mark.count === 1) {
+        void sendPushToUser({
+          userId: params.userId,
+          title: "Saldo insuficiente",
+          body: "Tu saldo no cuenta con el mínimo para seguir prestando el servicio. Comunicate con la operadora o ve a la oficina para recargar.",
+          data: {
+            type: "LOW_CREDITS",
+            balanceCop: String(account.balanceCop),
+            minCop: String(minCop),
+          },
+        });
+      }
+    }
+
     return {
       ok: false as const,
       status: 402 as const,
-      error: `Saldo insuficiente: tenés ${account.balanceCop} COP. Necesitás mínimo ${minCop} COP para continuar.`,
+      error: lowCreditsMessage({ audience, balanceCop: account.balanceCop, minCop }),
       balanceCop: account.balanceCop,
       minCop,
     };

@@ -41,6 +41,12 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "64b65133-8ce2-4fb8-b6c6-15388d8f3fee"
+      }
+    },
+    "owner": "burgosdeveloper"
   }
 }

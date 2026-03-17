@@ -1,56 +1,54 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, type LatLng, type Region } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
+import { AppMap, type AppMapMarker, type AppMapPolyline, type AppMapRef, type LatLng, type Region } from "./AppMap";
 
 import { colors } from "../theme/colors";
 import { getDrivingRoute } from "../utils/directions";
 import { MapPreviewModal } from "./MapPreviewModal";
+import type { MapPoint } from "./MapPreviewModal";
 
 type Point = { lat: number; lng: number };
 
-function downsample(path: LatLng[], maxPoints: number) {
+function regionFromCenter(center: MapPoint): Region {
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+}
+
+function toLatLng(p: MapPoint): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
+}
+
+function downsample(path: MapPoint[], maxPoints: number) {
   const max = Math.max(2, Math.floor(maxPoints));
   if (path.length <= max) return path;
 
   const stride = Math.ceil(path.length / max);
-  const out: LatLng[] = [];
+  const out: MapPoint[] = [];
   for (let i = 0; i < path.length; i += stride) out.push(path[i]);
 
   const last = path[path.length - 1];
   const lastOut = out[out.length - 1];
-  if (!lastOut || lastOut.latitude !== last.latitude || lastOut.longitude !== last.longitude) out.push(last);
+  if (!lastOut || lastOut.lat !== last.lat || lastOut.lng !== last.lng) out.push(last);
   return out.length > max ? out.slice(0, max) : out;
 }
 
-function computeRegion(pickup: Point, dropoff: Point, route?: LatLng[] | null): Region {
-  const points = (route?.length ? route : null) ?? [
-    { latitude: pickup.lat, longitude: pickup.lng },
-    { latitude: dropoff.lat, longitude: dropoff.lng },
-  ];
-
-  const minLat = Math.min(...points.map((p) => p.latitude));
-  const maxLat = Math.max(...points.map((p) => p.latitude));
-  const minLng = Math.min(...points.map((p) => p.longitude));
-  const maxLng = Math.max(...points.map((p) => p.longitude));
-
-  const latitude = (minLat + maxLat) / 2;
-  const longitude = (minLng + maxLng) / 2;
-
-  const latDelta = Math.max(0.002, (maxLat - minLat) * 1.8);
-  const lngDelta = Math.max(0.002, (maxLng - minLng) * 1.8);
-
-  return { latitude, longitude, latitudeDelta: latDelta, longitudeDelta: lngDelta };
+function computeCenter(pickup: Point, dropoff: Point, route?: MapPoint[] | null): MapPoint {
+  const points = (route?.length ? route : null) ?? [pickup, dropoff];
+  const minLat = Math.min(...points.map((p) => p.lat));
+  const maxLat = Math.max(...points.map((p) => p.lat));
+  const minLng = Math.min(...points.map((p) => p.lng));
+  const maxLng = Math.max(...points.map((p) => p.lng));
+  return { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
 }
 
 export function MiniRouteMap(props: { pickup: Point; dropoff: Point; height?: number; routePath?: Point[] | null }) {
   const height = props.height ?? 130;
 
-  const mapRef = useRef<MapView | null>(null);
-  const didFitRef = useRef(false);
-
-  const [route, setRoute] = useState<LatLng[] | null>(null);
+  const [route, setRoute] = useState<MapPoint[] | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
+
+  const mapRef = useRef<AppMapRef | null>(null);
+  const userInteractedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,9 +58,9 @@ export function MiniRouteMap(props: { pickup: Point; dropoff: Point; height?: nu
         const coords = props.routePath
           .map((p) => {
             if (!p || typeof p.lat !== "number" || typeof p.lng !== "number") return null;
-            return { latitude: p.lat, longitude: p.lng };
+            return { lat: p.lat, lng: p.lng } as MapPoint;
           })
-          .filter(Boolean) as LatLng[];
+          .filter(Boolean) as MapPoint[];
 
         if (!cancelled) setRoute(coords.length >= 2 ? downsample(coords, 200) : null);
         return;
@@ -70,7 +68,7 @@ export function MiniRouteMap(props: { pickup: Point; dropoff: Point; height?: nu
 
       const res = await getDrivingRoute({ from: props.pickup, to: props.dropoff });
       if (cancelled) return;
-      setRoute(res?.path?.length ? downsample(res.path, 200) : null);
+      setRoute(res?.path?.length ? downsample(res.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), 200) : null);
     }
 
     void run();
@@ -79,62 +77,80 @@ export function MiniRouteMap(props: { pickup: Point; dropoff: Point; height?: nu
     };
   }, [props.pickup.lat, props.pickup.lng, props.dropoff.lat, props.dropoff.lng, props.routePath]);
 
-  const region = useMemo(
-    () => computeRegion(props.pickup, props.dropoff, route),
+  const center = useMemo(
+    () => computeCenter(props.pickup, props.dropoff, route),
     [props.pickup.lat, props.pickup.lng, props.dropoff.lat, props.dropoff.lng, route]
   );
 
-  useEffect(() => {
-    const ref = mapRef.current;
-    if (!ref) return;
-    if (didFitRef.current) return;
-    if (!route?.length) return;
+  const fitCoords = useMemo(() => {
+    const line = route?.length ? route : [props.pickup, props.dropoff];
+    const coords = line
+      .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      .map(toLatLng);
+    return coords.length >= 2 ? coords : null;
+  }, [route, props.pickup, props.dropoff]);
 
-    ref.fitToCoordinates(route, {
-      edgePadding: { top: 20, right: 20, bottom: 20, left: 20 },
-      animated: false,
-    });
-    didFitRef.current = true;
-  }, [route]);
+  useEffect(() => {
+    if (userInteractedRef.current) return;
+    if (!fitCoords) return;
+    const t = setTimeout(() => {
+      if (userInteractedRef.current) return;
+      mapRef.current?.fitToCoordinates(fitCoords, { edgePadding: { top: 20, right: 20, bottom: 20, left: 20 }, animated: false });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [fitCoords]);
 
   return (
     <View style={[styles.wrap, { height }]}>
-      <MapView
+      <AppMap
         ref={(r) => {
           mapRef.current = r;
         }}
         style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        rotateEnabled
+        initialRegion={regionFromCenter(center)}
+        rotateEnabled={false}
+        pitchEnabled={false}
         scrollEnabled
         zoomEnabled
-        pitchEnabled={false}
-        toolbarEnabled={false}
-      >
-        <Marker coordinate={{ latitude: props.pickup.lat, longitude: props.pickup.lng }}>
-          <View style={[styles.badge, styles.badgeA]}>
-            <Text style={styles.badgeText}>A</Text>
-          </View>
-        </Marker>
-
-        <Marker coordinate={{ latitude: props.dropoff.lat, longitude: props.dropoff.lng }}>
-          <View style={[styles.badge, styles.badgeB]}>
-            <Text style={styles.badgeText}>B</Text>
-          </View>
-        </Marker>
-        <Polyline
-          coordinates={
-            route?.length
-              ? route
-              : [
-                  { latitude: props.pickup.lat, longitude: props.pickup.lng },
-                  { latitude: props.dropoff.lat, longitude: props.dropoff.lng },
-                ]
-          }
-          strokeColor={colors.gold}
-          strokeWidth={3}
-        />
-      </MapView>
+        onUserGesture={() => {
+          userInteractedRef.current = true;
+        }}
+        onMapReady={() => {
+          if (userInteractedRef.current) return;
+          if (!fitCoords) return;
+          mapRef.current?.fitToCoordinates(fitCoords, { edgePadding: { top: 20, right: 20, bottom: 20, left: 20 }, animated: false });
+        }}
+        polyline={
+          ({
+            id: "mini-route",
+            coordinates: (route?.length ? route : [props.pickup, props.dropoff]).map(toLatLng),
+            strokeColor: colors.gold,
+            strokeWidth: 4,
+          }) satisfies AppMapPolyline
+        }
+        markers={[
+          {
+            id: "pickup",
+            coordinate: toLatLng(props.pickup),
+            pinColor: colors.gold,
+            children: (
+              <View style={[styles.badge, styles.badgeA]}>
+                <Text style={styles.badgeText}>A</Text>
+              </View>
+            ),
+          } satisfies AppMapMarker,
+          {
+            id: "dropoff",
+            coordinate: toLatLng(props.dropoff),
+            pinColor: colors.text,
+            children: (
+              <View style={[styles.badge, styles.badgeB]}>
+                <Text style={styles.badgeText}>B</Text>
+              </View>
+            ),
+          } satisfies AppMapMarker,
+        ]}
+      />
 
       <Pressable
         onPress={() => setPreviewVisible(true)}
@@ -152,13 +168,13 @@ export function MiniRouteMap(props: { pickup: Point; dropoff: Point; height?: nu
         markers={[
           {
             id: "pickup",
-            coordinate: { latitude: props.pickup.lat, longitude: props.pickup.lng },
+            coordinate: props.pickup,
             title: "A",
             pinColor: colors.gold,
           },
           {
             id: "dropoff",
-            coordinate: { latitude: props.dropoff.lat, longitude: props.dropoff.lng },
+            coordinate: props.dropoff,
             title: "B",
             pinColor: colors.text,
           },
@@ -166,10 +182,7 @@ export function MiniRouteMap(props: { pickup: Point; dropoff: Point; height?: nu
         polyline={
           route?.length
             ? route
-            : [
-                { latitude: props.pickup.lat, longitude: props.pickup.lng },
-                { latitude: props.dropoff.lat, longitude: props.dropoff.lng },
-              ]
+            : [props.pickup, props.dropoff]
         }
       />
     </View>

@@ -81,3 +81,48 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
     return null;
   }
 }
+
+export async function getDrivingTableDistancesMeters(params: {
+  from: Coords;
+  toMany: Coords[];
+}): Promise<(number | null)[] | null> {
+  if (!params.toMany.length) return [];
+
+  const base = osrmBaseUrl();
+  const coords = [params.from, ...params.toMany]
+    .map((c) => `${c.lng},${c.lat}`)
+    .join(";");
+
+  // OSRM Table: 1 source (index 0) -> N destinations.
+  const destinations = params.toMany
+    .map((_, idx) => String(idx + 1))
+    .join(";");
+
+  const url = `${base}/table/v1/driving/${coords}?sources=0&destinations=${destinations}&annotations=distance`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    });
+
+    if (!res.ok) return null;
+
+    const data: any = await res.json();
+    const distances: any = data?.distances;
+
+    const row0 = Array.isArray(distances) ? distances?.[0] : null;
+    if (!Array.isArray(row0)) return null;
+
+    const out = row0.map((d: any) => {
+      if (d === null) return null;
+      if (typeof d !== "number" || !Number.isFinite(d) || d <= 0) return null;
+      return Math.round(d);
+    });
+
+    if (out.length !== params.toMany.length) return null;
+    return out;
+  } catch {
+    return null;
+  }
+}

@@ -1,34 +1,36 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, type LatLng, type Region } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
+import { AppMap, type AppMapMarker, type AppMapPolyline, type AppMapRef, type LatLng, type Region } from "./AppMap";
 
 import { colors } from "../theme/colors";
 
+export type MapPoint = { lat: number; lng: number };
+
 type MarkerItem = {
   id: string;
-  coordinate: LatLng;
+  coordinate: MapPoint;
   title: string;
   pinColor?: string;
 };
 
-function computeRegion(points: LatLng[]): Region {
-  if (!points.length) {
-    return { latitude: 0, longitude: 0, latitudeDelta: 60, longitudeDelta: 60 };
-  }
+function computeCenter(points: MapPoint[]): MapPoint {
+  if (!points.length) return { lat: 0, lng: 0 };
 
-  const minLat = Math.min(...points.map((p) => p.latitude));
-  const maxLat = Math.max(...points.map((p) => p.latitude));
-  const minLng = Math.min(...points.map((p) => p.longitude));
-  const maxLng = Math.max(...points.map((p) => p.longitude));
+  const minLat = Math.min(...points.map((p) => p.lat));
+  const maxLat = Math.max(...points.map((p) => p.lat));
+  const minLng = Math.min(...points.map((p) => p.lng));
+  const maxLng = Math.max(...points.map((p) => p.lng));
 
-  const latitude = (minLat + maxLat) / 2;
-  const longitude = (minLng + maxLng) / 2;
+  return { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
+}
 
-  const latDelta = Math.max(0.01, (maxLat - minLat) * 1.8);
-  const lngDelta = Math.max(0.01, (maxLng - minLng) * 1.8);
+function regionFromCenter(center: MapPoint): Region {
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+}
 
-  return { latitude, longitude, latitudeDelta: latDelta, longitudeDelta: lngDelta };
+function toLatLng(p: MapPoint): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
 }
 
 export function MapPreviewModal(props: {
@@ -36,10 +38,9 @@ export function MapPreviewModal(props: {
   onClose: () => void;
   title?: string;
   markers: MarkerItem[];
-  polyline?: LatLng[] | null;
+  polyline?: MapPoint[] | null;
 }) {
-  const mapRef = useRef<MapView | null>(null);
-  const didFitRef = useRef(false);
+  const mapRef = useRef<AppMapRef | null>(null);
 
   const fitPoints = useMemo(() => {
     const base = props.markers.map((m) => m.coordinate);
@@ -47,27 +48,28 @@ export function MapPreviewModal(props: {
     return line?.length ? [...base, ...line] : base;
   }, [props.markers, props.polyline]);
 
-  const initialRegion = useMemo(() => computeRegion(fitPoints), [fitPoints]);
+  const initialCenter = useMemo(() => computeCenter(fitPoints), [fitPoints]);
+
+  const fitCoords = useMemo(() => {
+    const coords = fitPoints
+      .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      .map(toLatLng);
+    return coords.length >= 2 ? coords : null;
+  }, [fitPoints]);
 
   useEffect(() => {
-    if (!props.visible) {
-      didFitRef.current = false;
-      return;
-    }
+    if (!props.visible) return;
+    if (!fitCoords) return;
 
-    if (didFitRef.current) return;
-    const ref = mapRef.current;
-    if (!ref) return;
-    if (!fitPoints.length) return;
-
-    requestAnimationFrame(() => {
-      ref.fitToCoordinates(fitPoints, {
+    const t = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(fitCoords, {
         edgePadding: { top: 70, right: 70, bottom: 70, left: 70 },
         animated: false,
       });
-    });
-    didFitRef.current = true;
-  }, [props.visible]);
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [props.visible, fitCoords]);
 
   return (
     <Modal visible={props.visible} animationType="fade" transparent onRequestClose={props.onClose}>
@@ -98,29 +100,43 @@ export function MapPreviewModal(props: {
           </View>
 
           <View style={styles.mapWrap}>
-            <MapView
+            <AppMap
               ref={(r) => {
                 mapRef.current = r;
               }}
               style={StyleSheet.absoluteFill}
-              initialRegion={initialRegion}
-              rotateEnabled
+              initialRegion={regionFromCenter(initialCenter)}
+              rotateEnabled={false}
               pitchEnabled={false}
-              toolbarEnabled={false}
-            >
-              {props.polyline?.length ? (
-                <Polyline coordinates={props.polyline} strokeColor={colors.gold} strokeWidth={4} />
-              ) : null}
-
-              {props.markers.map((m) => (
-                <Marker
-                  key={m.id}
-                  coordinate={m.coordinate}
-                  title={m.title}
-                  pinColor={m.pinColor ?? colors.gold}
-                />
-              ))}
-            </MapView>
+              onMapReady={() => {
+                if (!fitCoords) return;
+                mapRef.current?.fitToCoordinates(fitCoords, {
+                  edgePadding: { top: 70, right: 70, bottom: 70, left: 70 },
+                  animated: false,
+                });
+              }}
+              polyline={
+                props.polyline?.length
+                  ? ({
+                      id: "modal-route",
+                      coordinates: props.polyline.map(toLatLng),
+                      strokeColor: colors.gold,
+                      strokeWidth: 4,
+                    } satisfies AppMapPolyline)
+                  : null
+              }
+              markers={
+                props.markers.map(
+                  (m) =>
+                    ({
+                      id: m.id,
+                      coordinate: toLatLng(m.coordinate),
+                      title: m.title,
+                      pinColor: m.pinColor,
+                    }) satisfies AppMapMarker
+                )
+              }
+            />
           </View>
         </View>
       </View>

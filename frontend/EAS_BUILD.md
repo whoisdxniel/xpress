@@ -1,39 +1,40 @@
-# Build APK con EAS (Expo)
+# Build APK local (Android)
+
+Este proyecto ya no usa EAS para generar APK. El flujo recomendado es compilar localmente con Gradle.
 
 ## Requisitos
-- Tener cuenta en Expo.
-- Instalar EAS CLI: `npm i -g eas-cli`
+- Windows + Android Studio instalado.
+- Node.js (para `npm install`).
 
 ## 1) Configurar URL del backend
-Tu app lee el backend desde `EXPO_PUBLIC_API_BASE_URL` (debe incluir `/api`).
+La app lee el backend desde `EXPO_PUBLIC_API_BASE_URL` (debe incluir `/api`).
 
-Para ruteo, también podés configurar `EXPO_PUBLIC_OSRM_BASE_URL` (opcional; por defecto usa `https://router.project-osrm.org`).
+Opcional:
+- `EXPO_PUBLIC_OSRM_BASE_URL` (por defecto usa `https://router.project-osrm.org`).
 
-Opciones:
-- Editar `eas.json` y reemplazar los placeholders:
-  - `EXPO_PUBLIC_API_BASE_URL` (ej: `http://TU_IP_LAN:3001/api` en LAN o `https://TU_DOMINIO/api` en producción)
-  - `EXPO_PUBLIC_OSRM_BASE_URL` (si querés tu propio OSRM)
-- O usar secrets (recomendado):
-  - `eas secret:create --name EXPO_PUBLIC_API_BASE_URL --value https://TU_DOMINIO/api`
-  - (opcional) `eas secret:create --name EXPO_PUBLIC_OSRM_BASE_URL --value https://router.project-osrm.org`
+En `frontend/.env` podés definir, por ejemplo:
+- `EXPO_PUBLIC_API_BASE_URL=https://xpress-production-e5d4.up.railway.app/api`
 
-## 2) Inicializar EAS
+## 2) Instalar Android SDK (una sola vez)
 Desde `frontend/`:
-- `eas login`
-- `eas init`
+- `npm run android:setup-sdk`
 
-> `eas init` suele escribir `extra.eas.projectId` en el config. Si te lo agrega, commitealo.
+Esto descarga `commandline-tools`, acepta licencias e instala:
+- `platform-tools`
+- `platforms;android-36`
+- `build-tools;36.0.0`
+- `ndk;27.1.12297006`
 
-## 3) Generar APK
+## 3) Generar APK debug
 Desde `frontend/`:
-- APK de pruebas (internal): `eas build -p android --profile preview`
-- APK release: `eas build -p android --profile production`
+- `npm run android:apk`
 
-Al finalizar, EAS te da un link para descargar el APK.
+Salida esperada:
+- `frontend/android/app/build/outputs/apk/debug/app-debug.apk`
 
 ## Notas
 - Usá HTTPS en producción (Android suele bloquear HTTP plano).
-- Si cambiás `android.package` en `app.json`, EAS lo toma como una app distinta.
+- Si el build pide componentes extra (por ejemplo CMake), Gradle los descargará automáticamente.
 
 ## Push notifications (Android)
 Esta app registra el token nativo (FCM) con `expo-notifications` y el backend envía por Firebase Admin.

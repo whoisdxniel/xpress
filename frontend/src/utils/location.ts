@@ -12,7 +12,9 @@ export async function ensureForegroundPermission() {
 }
 
 export async function readCachedCoords() {
-  return getLastCoords({ maxAgeMs: 6 * 60 * 60 * 1000 });
+  // Preferimos un fallback “real” (última ubicación guardada) antes que caer en un centro fijo.
+  // 30 días reduce el caso "arranca en otro país" si el usuario ya usó la app antes.
+  return getLastCoords({ maxAgeMs: 30 * 24 * 60 * 60 * 1000 });
 }
 
 export async function getLastKnownCoords(): Promise<Coords | null> {

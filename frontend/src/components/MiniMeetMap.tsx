@@ -1,26 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, type Region } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
+import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "./AppMap";
 
 import { colors } from "../theme/colors";
 import { MapPreviewModal } from "./MapPreviewModal";
+import type { MapPoint } from "./MapPreviewModal";
 
 type Point = { lat: number; lng: number };
 
-function computeRegion(a: Point, b: Point): Region {
-  const minLat = Math.min(a.lat, b.lat);
-  const maxLat = Math.max(a.lat, b.lat);
-  const minLng = Math.min(a.lng, b.lng);
-  const maxLng = Math.max(a.lng, b.lng);
+function computeCenter(a: Point, b: Point): MapPoint {
+  return { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+}
 
-  const latitude = (minLat + maxLat) / 2;
-  const longitude = (minLng + maxLng) / 2;
+function regionFromCenter(center: MapPoint): Region {
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+}
 
-  const latDelta = Math.max(0.002, (maxLat - minLat) * 1.8);
-  const lngDelta = Math.max(0.002, (maxLng - minLng) * 1.8);
-
-  return { latitude, longitude, latitudeDelta: latDelta, longitudeDelta: lngDelta };
+function toLatLng(p: MapPoint): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
 }
 
 export function MiniMeetMap(props: {
@@ -33,36 +31,76 @@ export function MiniMeetMap(props: {
   const height = props.height ?? 130;
   const [previewVisible, setPreviewVisible] = useState(false);
 
-  const region = useMemo(
-    () => computeRegion(props.driver, props.passenger),
+  const mapRef = useRef<AppMapRef | null>(null);
+  const userInteractedRef = useRef(false);
+
+  const center = useMemo(
+    () => computeCenter(props.driver, props.passenger),
     [props.driver.lat, props.driver.lng, props.passenger.lat, props.passenger.lng]
   );
 
+  useEffect(() => {
+    if (userInteractedRef.current) return;
+    const coords = [props.driver, props.passenger]
+      .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      .map(toLatLng);
+    if (coords.length < 2) return;
+
+    const t = setTimeout(() => {
+      if (userInteractedRef.current) return;
+      mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 20, right: 20, bottom: 20, left: 20 }, animated: false });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [props.driver.lat, props.driver.lng, props.passenger.lat, props.passenger.lng]);
+
   return (
     <View style={[styles.wrap, { height }]}>
-      <MapView
+      <AppMap
+        ref={(r) => {
+          mapRef.current = r;
+        }}
         style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        rotateEnabled
+        initialRegion={regionFromCenter(center)}
+        rotateEnabled={false}
+        pitchEnabled={false}
         scrollEnabled
         zoomEnabled
-        pitchEnabled={false}
-        toolbarEnabled={false}
-      >
-        <Marker coordinate={{ latitude: props.passenger.lat, longitude: props.passenger.lng }}>
-          <View style={[styles.pin, styles.pinPassenger]}>
-            <Ionicons name={props.passengerIconName ?? "person"} size={14} color={colors.text} />
-            <Text style={styles.pinText}>Cliente</Text>
-          </View>
-        </Marker>
-
-        <Marker coordinate={{ latitude: props.driver.lat, longitude: props.driver.lng }}>
-          <View style={[styles.pin, styles.pinDriver]}>
-            <Ionicons name={props.driverIconName ?? "car"} size={14} color={colors.text} />
-            <Text style={styles.pinText}>Tú</Text>
-          </View>
-        </Marker>
-      </MapView>
+        onUserGesture={() => {
+          userInteractedRef.current = true;
+        }}
+        onMapReady={() => {
+          if (userInteractedRef.current) return;
+          const coords = [props.driver, props.passenger]
+            .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+            .map(toLatLng);
+          if (coords.length < 2) return;
+          mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 20, right: 20, bottom: 20, left: 20 }, animated: false });
+        }}
+        markers={[
+          {
+            id: "passenger",
+            coordinate: toLatLng(props.passenger),
+            pinColor: colors.gold,
+            children: (
+              <View style={[styles.pin, styles.pinPassenger]}>
+                <Ionicons name={props.passengerIconName ?? "person"} size={14} color={colors.text} />
+                <Text style={styles.pinText}>Cliente</Text>
+              </View>
+            ),
+          } satisfies AppMapMarker,
+          {
+            id: "driver",
+            coordinate: toLatLng(props.driver),
+            pinColor: colors.text,
+            children: (
+              <View style={[styles.pin, styles.pinDriver]}>
+                <Ionicons name={props.driverIconName ?? "car"} size={14} color={colors.text} />
+                <Text style={styles.pinText}>Tú</Text>
+              </View>
+            ),
+          } satisfies AppMapMarker,
+        ]}
+      />
 
       <Pressable
         onPress={() => setPreviewVisible(true)}
@@ -80,13 +118,13 @@ export function MiniMeetMap(props: {
         markers={[
           {
             id: "passenger",
-            coordinate: { latitude: props.passenger.lat, longitude: props.passenger.lng },
+            coordinate: props.passenger,
             title: "Cliente",
             pinColor: colors.gold,
           },
           {
             id: "driver",
-            coordinate: { latitude: props.driver.lat, longitude: props.driver.lng },
+            coordinate: props.driver,
             title: "Tú",
             pinColor: colors.text,
           },

@@ -721,6 +721,7 @@ export async function upsertPricing(params: {
   serviceType: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
   baseFare: number;
   nightBaseFare?: number;
+  nightStartHour?: number;
   perKm: number;
   includedMeters?: number;
   stepMeters?: number;
@@ -733,12 +734,14 @@ export async function upsertPricing(params: {
   const stepMeters = Math.max(0, Math.floor(Number(params.stepMeters ?? 0)));
   const stepPrice = Math.max(0, Number(params.stepPrice ?? 0));
   const nightBaseFare = Math.max(0, Number(params.nightBaseFare ?? 0));
+  const nightStartHour = Math.max(0, Math.min(23, Math.floor(Number(params.nightStartHour ?? 20))));
 
   return prisma.pricingConfig.upsert({
     where: { serviceType: params.serviceType as ServiceType },
     update: {
       baseFare: params.baseFare,
       nightBaseFare,
+      nightStartHour,
       perKm: params.perKm,
       includedMeters,
       stepMeters,
@@ -751,6 +754,7 @@ export async function upsertPricing(params: {
       serviceType: params.serviceType as ServiceType,
       baseFare: params.baseFare,
       nightBaseFare,
+      nightStartHour,
       perKm: params.perKm,
       includedMeters,
       stepMeters,

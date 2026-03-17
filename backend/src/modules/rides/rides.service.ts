@@ -8,7 +8,7 @@ import { chargeDriverCreditsForCompletedRide, ensureDriverHasMinCredits } from "
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
 import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
-import { getDrivingRoute } from "../../utils/directions";
+import { getDrivingRoute, getDrivingTableDistancesMeters } from "../../utils/directions";
 
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
 
@@ -113,12 +113,22 @@ export async function listNearbyDrivers(params: {
     take: 200,
   });
 
-  const items = drivers
+  const prelim = drivers
     .map((d) => {
-      const dist = haversineDistanceMeters(
-        { lat: params.center.lat, lng: params.center.lng },
-        { lat: Number(d.location?.lat), lng: Number(d.location?.lng) }
-      );
+      const location = d.location
+        ? {
+            lat: Number(d.location.lat),
+            lng: Number(d.location.lng),
+            updatedAt: d.location.updatedAt,
+          }
+        : null;
+
+      const dist = location
+        ? haversineDistanceMeters(
+            { lat: params.center.lat, lng: params.center.lng },
+            { lat: location.lat, lng: location.lng }
+          )
+        : Number.NaN;
 
       return {
         driverId: d.id,
@@ -126,19 +136,30 @@ export async function listNearbyDrivers(params: {
         photoUrl: d.photoUrl,
         serviceType: d.serviceType,
         vehicle: d.vehicle,
-        location: d.location
-          ? {
-              lat: Number(d.location.lat),
-              lng: Number(d.location.lng),
-              updatedAt: d.location.updatedAt,
-            }
-          : null,
+        location,
+        // Fallback: distancia recta. Intentamos reemplazarla por distancia por ruta con OSRM.
         distanceMeters: Math.round(dist),
       };
     })
-    .filter((x) => x.location && x.distanceMeters <= params.radiusM)
+    .filter((x) => x.location && Number.isFinite(x.distanceMeters) && x.distanceMeters <= params.radiusM)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, 100);
+
+  const tableDistances = await getDrivingTableDistancesMeters({
+    from: params.center,
+    toMany: prelim.map((x) => ({ lat: x.location!.lat, lng: x.location!.lng })),
+  });
+
+  const items = prelim
+    .map((item, idx) => {
+      const d = tableDistances?.[idx];
+      return {
+        ...item,
+        distanceMeters: typeof d === "number" ? d : item.distanceMeters,
+      };
+    })
+    .filter((x) => x.distanceMeters <= params.radiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
   return { ok: true as const, center: params.center, radiusM: params.radiusM, items };
 }
@@ -258,11 +279,12 @@ export async function createRide(params: {
   const now = new Date();
   const appConfig = await getAppConfig();
   const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
+  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? appConfig.nightStartHour);
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
     nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
-    nightStartHour: appConfig.nightStartHour,
+    nightStartHour: pricingNightStartHour,
   });
 
   const estimated = calculateFare({
@@ -402,12 +424,18 @@ export async function listRideCandidates(params: { userId: string; rideId: strin
     take: 200,
   });
 
-  const candidates = drivers
+  const pickup = { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) };
+
+  const prelim = drivers
     .map((d) => {
-      const dist = haversineDistanceMeters(
-        { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) },
-        { lat: Number(d.location?.lat), lng: Number(d.location?.lng) }
-      );
+      const location = d.location
+        ? {
+            lat: Number(d.location.lat),
+            lng: Number(d.location.lng),
+          }
+        : null;
+
+      const dist = location ? haversineDistanceMeters(pickup, location) : Number.NaN;
 
       return {
         driverId: d.id,
@@ -415,6 +443,7 @@ export async function listRideCandidates(params: { userId: string; rideId: strin
         photoUrl: d.photoUrl,
         serviceType: d.serviceType,
         vehicle: d.vehicle,
+        location,
         distanceMeters: Math.round(dist),
         whatsappLink: buildWhatsappLink({
           phoneRaw: d.phone,
@@ -422,9 +451,25 @@ export async function listRideCandidates(params: { userId: string; rideId: strin
         }),
       };
     })
-    .filter((c) => c.distanceMeters <= ride.searchRadiusM)
+    .filter((c) => c.location && Number.isFinite(c.distanceMeters) && c.distanceMeters <= ride.searchRadiusM)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, 50);
+
+  const tableDistances = await getDrivingTableDistancesMeters({
+    from: pickup,
+    toMany: prelim.map((c) => ({ lat: c.location!.lat, lng: c.location!.lng })),
+  });
+
+  const candidates = prelim
+    .map((c, idx) => {
+      const d = tableDistances?.[idx];
+      const distanceMeters = typeof d === "number" ? d : c.distanceMeters;
+      // no exponemos location, sólo la usamos internamente
+      const { location, ...rest } = c;
+      return { ...rest, distanceMeters };
+    })
+    .filter((c) => c.distanceMeters <= ride.searchRadiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
   return { ok: true as const, ride, candidates };
 }
@@ -472,16 +517,16 @@ export async function listNearbyRideRequestsForDriver(params: { userId: string; 
     take: Math.min(200, Math.max(params.take, 1) * 5),
   });
 
-  const items = raw
+  const prelim = raw
     .map((r) => {
-      const dist = haversineDistanceMeters(center, { lat: Number(r.pickupLat), lng: Number(r.pickupLng) });
+      const pickup = { lat: Number(r.pickupLat), lng: Number(r.pickupLng) };
+      const dist = haversineDistanceMeters(center, pickup);
       const mine = r.candidates[0];
 
       return {
         rideId: r.id,
         pickup: {
-          lat: Number(r.pickupLat),
-          lng: Number(r.pickupLng),
+          ...pickup,
           address: r.pickupAddress ?? undefined,
         },
         dropoff: {
@@ -508,9 +553,25 @@ export async function listNearbyRideRequestsForDriver(params: { userId: string; 
         distanceMeters: Math.round(dist),
       };
     })
-    .filter((x) => x.distanceMeters <= params.radiusM)
+    .filter((x) => Number.isFinite(x.distanceMeters) && x.distanceMeters <= params.radiusM)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, Math.min(100, Math.max(params.take, 1)));
+
+  const tableDistances = await getDrivingTableDistancesMeters({
+    from: center,
+    toMany: prelim.map((x) => ({ lat: x.pickup.lat, lng: x.pickup.lng })),
+  });
+
+  const items = prelim
+    .map((x, idx) => {
+      const d = tableDistances?.[idx];
+      return {
+        ...x,
+        distanceMeters: typeof d === "number" ? d : x.distanceMeters,
+      };
+    })
+    .filter((x) => x.distanceMeters <= params.radiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
   return { ok: true as const, center, radiusM: params.radiusM, items };
 }

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT, type LatLng, type Region } from "react-native-maps";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
+import { AppMap, type AppMapMarker, type AppMapPolyline, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
 
 import { Screen } from "../components/Screen";
 import { Card } from "../components/Card";
@@ -24,6 +24,18 @@ import { ensureForegroundPermission, getCurrentCoords, getFastCoords } from "../
 import { setActiveRideOffersRideId } from "../lib/storage";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerDriversMap">;
+
+type MapPoint = { lat: number; lng: number };
+
+function regionFromCenter(center: MapPoint, zoomHint?: "close" | "normal"): Region {
+  // ~100m: 0.001° lat ≈ 111m (aprox).
+  const delta = zoomHint === "close" ? 0.001 : 0.03;
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: delta, longitudeDelta: delta };
+}
+
+function toLatLng(p: MapPoint): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
+}
 
 const zoeImg = require("../../assets/zoe.png");
 
@@ -68,8 +80,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
 
-  const mapRef = useRef<MapView | null>(null);
-
   // Fallback inmediato mientras se obtiene GPS real.
   const fallbackCenter = useMemo(() => ({ lat: 7.7669, lng: -72.2250 }), []);
 
@@ -109,10 +119,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     await Linking.openURL(operatorLink);
   }
 
-  const region: Region = useMemo(() => {
+  const initialCenter = useMemo(() => {
     const lat = center?.lat ?? fallbackCenter.lat;
     const lng = center?.lng ?? fallbackCenter.lng;
-    return { latitude: lat, longitude: lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+    return { lat, lng };
   }, [center?.lat, center?.lng, fallbackCenter.lat, fallbackCenter.lng]);
 
   const locationReadyRef = useRef(false);
@@ -120,9 +130,33 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const locationSeqRef = useRef(0);
   const driversSeqRef = useRef(0);
 
+  const userInteractedRef = useRef(false);
+  const shouldRecenterRef = useRef(false);
+  const hasAutoCenteredRef = useRef(false);
+  const mapReadyRef = useRef(false);
+
+  const mapRef = useRef<AppMapRef | null>(null);
+
+  useEffect(() => {
+    const canAutoCenter = !userInteractedRef.current || shouldRecenterRef.current || !hasAutoCenteredRef.current;
+    if (!canAutoCenter) return;
+
+    mapRef.current?.animateToRegion(regionFromCenter(initialCenter, "close"), 450);
+    hasAutoCenteredRef.current = true;
+    shouldRecenterRef.current = false;
+  }, [initialCenter.lat, initialCenter.lng]);
+
+  function requestRecenter() {
+    userInteractedRef.current = false;
+    shouldRecenterRef.current = true;
+    hasAutoCenteredRef.current = false;
+    void refreshLocation({ showError: true, animate: true });
+  }
+
   async function refreshLocation(opts?: { showError?: boolean; animate?: boolean }) {
     const showError = opts?.showError ?? true;
     const animate = opts?.animate ?? true;
+    shouldRecenterRef.current = animate;
 
     const mySeq = ++locationSeqRef.current;
     const showSpinner = !locationReadyRef.current;
@@ -138,13 +172,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         setCenter(fast);
         locationReadyRef.current = true;
         if (showSpinner) setLoadingLocation(false);
-
-        if (animate) {
-          mapRef.current?.animateToRegion(
-            { latitude: fast.lat, longitude: fast.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-            350
-          );
-        }
       }
 
       // GPS “real” (con timeout) sin trabar el UI.
@@ -154,13 +181,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         setCenter(current);
         setEstimate(null);
         locationReadyRef.current = true;
-
-        if (animate) {
-          mapRef.current?.animateToRegion(
-            { latitude: current.lat, longitude: current.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-            350
-          );
-        }
       } catch {
         // Silencioso: con fast coords ya se puede usar.
       }
@@ -176,7 +196,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   useEffect(() => {
     // Centro instantáneo desde cache (no pide permisos).
     void (async () => {
-      const cached = await getLastCoords({ maxAgeMs: 6 * 60 * 60 * 1000 });
+      const cached = await getLastCoords({ maxAgeMs: 30 * 24 * 60 * 60 * 1000 });
       if (cached) setCenter(cached);
     })();
 
@@ -255,6 +275,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   }
 
   async function ensureAddresses(params: { pickup: { lat: number; lng: number }; dropoff: { lat: number; lng: number } }) {
+    // Reverse-geocoding best-effort: si no hay dirección, devolvemos null y NO reusamos valores viejos.
     try {
       const [p, d] = await Promise.all([
         Location.reverseGeocodeAsync({ latitude: params.pickup.lat, longitude: params.pickup.lng }),
@@ -264,12 +285,14 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       const pAddr = formatReverseGeocoded(p?.[0]);
       const dAddr = formatReverseGeocoded(d?.[0]);
 
-      if (pAddr) setPickupAddress(pAddr);
-      if (dAddr) setDropoffAddress(dAddr);
+      setPickupAddress(pAddr ?? null);
+      setDropoffAddress(dAddr ?? null);
 
-      return { pickupAddress: pAddr ?? pickupAddress, dropoffAddress: dAddr ?? dropoffAddress };
+      return { pickupAddress: pAddr ?? null, dropoffAddress: dAddr ?? null };
     } catch {
-      return { pickupAddress, dropoffAddress };
+      setPickupAddress(null);
+      setDropoffAddress(null);
+      return { pickupAddress: null, dropoffAddress: null };
     }
   }
 
@@ -350,72 +373,103 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           <GoldTitle>Ejecutivos cercanos</GoldTitle>
         </View>
 
-        <Pressable style={styles.operatorBtn} onPress={() => void openOperator()}>
-          <Image source={zoeImg} style={styles.operatorImg} resizeMode="contain" />
-          <Text style={styles.operatorText}>ZOE</Text>
-        </Pressable>
+        <View style={styles.topBarRight}>
+          <Pressable
+            style={({ pressed }) => [styles.locateBtn, pressed && styles.pressed]}
+            onPress={requestRecenter}
+            accessibilityRole="button"
+            accessibilityLabel="Centrar en mi ubicación"
+          >
+            <Ionicons name="locate-outline" size={18} color={colors.gold} />
+          </Pressable>
+
+          <Pressable style={styles.operatorBtn} onPress={() => void openOperator()}>
+            <Image source={zoeImg} style={styles.operatorImg} resizeMode="contain" />
+            <Text style={styles.operatorText}>ZOE</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.mapWrap}>
-        <MapView
-          ref={(r) => {
-            mapRef.current = r;
-          }}
-          style={StyleSheet.absoluteFill}
-          provider={PROVIDER_DEFAULT}
-          initialRegion={region}
-          onPress={(e) => {
-            if ((e.nativeEvent as any)?.action === "marker-press") return;
-            const c = e.nativeEvent.coordinate;
-            setDropoff({ lat: c.latitude, lng: c.longitude });
-            setDropoffAddress(null);
-            setEstimate(null);
-          }}
-        >
-          <Marker
-            coordinate={{ latitude: center.lat, longitude: center.lng }}
-            title="Vos"
-            description="Tu ubicación"
-            pinColor={colors.gold}
-          />
+        {(() => {
+          const routePoints: MapPoint[] | null = estimate?.routePath?.length
+            ? estimate.routePath
+                .map((p) => ({ lat: p.lat, lng: p.lng }))
+                .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+            : null;
 
-          {dropoff ? (
-            <Marker
-              coordinate={{ latitude: dropoff.lat, longitude: dropoff.lng }}
-              title="Destino"
-              description={dropoffAddress ?? "Destino"}
-            >
-              <View style={styles.destMarkerWrap}>
-                <View style={styles.destMarkerInner}>
-                  <Ionicons name="navigate" size={18} color={colors.bg} />
+          const polyline: AppMapPolyline | null = routePoints?.length
+            ? {
+                id: "estimate-route",
+                coordinates: routePoints.map(toLatLng),
+                strokeColor: colors.gold,
+                strokeWidth: 4,
+              }
+            : null;
+
+          const markers: AppMapMarker[] = [];
+          markers.push({ id: "me", coordinate: toLatLng(center), pinColor: colors.gold });
+
+          if (dropoff) {
+            markers.push({
+              id: "dropoff",
+              coordinate: toLatLng(dropoff),
+              pinColor: colors.gold,
+              children: (
+                <View style={styles.destMarkerWrap}>
+                  <View style={styles.destMarkerInner}>
+                    <Ionicons name="navigate" size={18} color={colors.bg} />
+                  </View>
                 </View>
-              </View>
-            </Marker>
-          ) : null}
+              ),
+            });
+          }
 
-          {estimate?.routePath?.length ? (
-            <Polyline
-              coordinates={estimate.routePath
-                .map((p) => ({ latitude: p.lat, longitude: p.lng }))
-                .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)) as LatLng[]}
-              strokeColor={colors.gold}
-              strokeWidth={4}
+          for (const d of items.filter((x) => !!x.location)) {
+            const loc = d.location!;
+            const lat = Number(loc.lat);
+            const lng = Number(loc.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+            markers.push({
+              id: `driver-${String(d.driverId)}`,
+              coordinate: toLatLng({ lat, lng }),
+              pinColor: colors.danger,
+              onPress: () => setSelected(d),
+            });
+          }
+
+          return (
+            <AppMap
+              ref={(r) => {
+                mapRef.current = r;
+              }}
+              style={StyleSheet.absoluteFill}
+              initialRegion={regionFromCenter(initialCenter)}
+              rotateEnabled
+              pitchEnabled={false}
+              scrollEnabled
+              zoomEnabled
+              onMapReady={() => {
+                mapReadyRef.current = true;
+                const canAutoCenter = !userInteractedRef.current || shouldRecenterRef.current || !hasAutoCenteredRef.current;
+                if (!canAutoCenter) return;
+                mapRef.current?.animateToRegion(regionFromCenter(initialCenter, "close"), 0);
+                hasAutoCenteredRef.current = true;
+                shouldRecenterRef.current = false;
+              }}
+              onUserGesture={() => {
+                userInteractedRef.current = true;
+              }}
+              onPress={(c) => {
+                setDropoff({ lat: c.latitude, lng: c.longitude });
+                setDropoffAddress(null);
+                setEstimate(null);
+              }}
+              polyline={polyline}
+              markers={markers}
             />
-          ) : null}
-
-          {items
-            .filter((d) => !!d.location)
-            .map((d) => (
-              <Marker
-                key={d.driverId}
-                coordinate={{ latitude: d.location!.lat, longitude: d.location!.lng }}
-                title={d.fullName}
-                description={d.location ? `Actualizado ${formatAgo(d.location.updatedAt)}` : ""}
-                onPress={() => setSelected(d)}
-                pinColor={colors.danger}
-              />
-            ))}
-        </MapView>
+          );
+        })()}
 
         {loadingLocation || (loadingDrivers && !driversLoadedRef.current) ? (
           <View style={styles.loadingOverlay}>
@@ -434,6 +488,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           <Card style={{ gap: 8 }}>
             <PrimaryButton
               label={estimating ? "Calculando..." : "Calcular aproximado"}
+              iconName="calculator-outline"
               onPress={() => void estimateApprox()}
               disabled={estimating || loadingLocation}
             />
@@ -545,6 +600,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
+  topBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  locateBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    shadowColor: colors.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 2,
+  },
   operatorBtn: {
     alignItems: "center",
     justifyContent: "center",
@@ -569,6 +643,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 10,
     fontWeight: "900",
+  },
+  pressed: {
+    opacity: 0.85,
   },
   mapWrap: {
     flex: 1,

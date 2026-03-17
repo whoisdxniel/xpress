@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT, type Region } from "react-native-maps";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
+import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
 
 import { Screen } from "../components/Screen";
 import { Card } from "../components/Card";
@@ -22,6 +22,16 @@ import { offerStatusLabel } from "../utils/labels";
 
 type Props = NativeStackScreenProps<RootStackParamList, "DriverOfferDetails">;
 
+type MapPoint = { lat: number; lng: number };
+
+function regionFromCenter(center: MapPoint): Region {
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+}
+
+function toLatLng(p: MapPoint): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
+}
+
 function money(n: number) {
   const rounded = Math.round(n * 100) / 100;
   return `$${rounded.toFixed(2)}`;
@@ -33,13 +43,13 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
 
   const offerId = route.params.offerId;
 
-  const mapRef = useRef<MapView | null>(null);
-
   const [offer, setOffer] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
-  const [routePath, setRoutePath] = useState<{ latitude: number; longitude: number }[] | null>(null);
+  const [routePath, setRoutePath] = useState<MapPoint[] | null>(null);
+
+  const mapRef = useRef<AppMapRef | null>(null);
 
   const [passengerTechOpen, setPassengerTechOpen] = useState(false);
 
@@ -65,11 +75,44 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
     return { lat: Number(offer.dropoffLat), lng: Number(offer.dropoffLng) };
   }, [offer]);
 
-  const region: Region = useMemo(() => {
-    const lat = pickup?.lat ?? -34.4477;
-    const lng = pickup?.lng ?? -58.5584;
-    return { latitude: lat, longitude: lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
-  }, [pickup?.lat, pickup?.lng]);
+  const initialCenter = useMemo(() => pickup ?? { lat: -34.4477, lng: -58.5584 }, [pickup]);
+
+  const fitCoords = useMemo(() => {
+    if (!pickup || !dropoff) return null;
+    const line = routePath?.length ? routePath : [pickup, dropoff];
+    const coords = line
+      .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      .map(toLatLng);
+    return coords.length >= 2 ? coords : null;
+  }, [pickup, dropoff, routePath]);
+
+  const polyline = useMemo(() => {
+    if (!pickup || !dropoff) return null;
+    const line = (routePath?.length ? routePath : [pickup, dropoff]).map(toLatLng);
+    return line.length >= 2
+      ? {
+          id: "offer-route",
+          coordinates: line,
+          strokeColor: colors.gold,
+          strokeWidth: 4,
+        }
+      : null;
+  }, [pickup, dropoff, routePath]);
+
+  const markers = useMemo(() => {
+    const items: AppMapMarker[] = [];
+    if (pickup) items.push({ id: "pickup", coordinate: toLatLng(pickup), pinColor: colors.gold });
+    if (dropoff) items.push({ id: "dropoff", coordinate: toLatLng(dropoff), pinColor: colors.text });
+    return items;
+  }, [pickup, dropoff]);
+
+  useEffect(() => {
+    if (!fitCoords) return;
+    const t = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(fitCoords, { edgePadding: { top: 70, right: 70, bottom: 70, left: 70 }, animated: false });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [fitCoords]);
 
   async function load() {
     if (!token) return;
@@ -78,10 +121,6 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
     try {
       const res = await apiGetOfferForDriver(token, offerId);
       setOffer(res.offer);
-
-      const lat = Number(res.offer.pickupLat);
-      const lng = Number(res.offer.pickupLng);
-      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 450);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar la oferta");
     } finally {
@@ -105,7 +144,7 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
 
       const route = await getDrivingRoute({ from: pickup, to: dropoff });
       if (!alive) return;
-      setRoutePath(route?.path ?? null);
+      setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null);
     })();
 
     return () => {
@@ -169,31 +208,23 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
       </View>
 
       <View style={styles.mapWrap}>
-        <MapView
+        <AppMap
           ref={(r) => {
             mapRef.current = r;
           }}
           style={StyleSheet.absoluteFill}
-          provider={PROVIDER_DEFAULT}
-          initialRegion={region}
-        >
-          {pickup ? <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Salida" pinColor={colors.gold} /> : null}
-          {dropoff ? <Marker coordinate={{ latitude: dropoff.lat, longitude: dropoff.lng }} title="Destino" /> : null}
-          {pickup && dropoff ? (
-            <Polyline
-              coordinates={
-                routePath?.length
-                  ? routePath
-                  : [
-                      { latitude: pickup.lat, longitude: pickup.lng },
-                      { latitude: dropoff.lat, longitude: dropoff.lng },
-                    ]
-              }
-              strokeWidth={4}
-              strokeColor={colors.gold}
-            />
-          ) : null}
-        </MapView>
+          initialRegion={regionFromCenter(initialCenter)}
+          rotateEnabled
+          pitchEnabled={false}
+          scrollEnabled
+          zoomEnabled
+          onMapReady={() => {
+            if (!fitCoords) return;
+            mapRef.current?.fitToCoordinates(fitCoords, { edgePadding: { top: 70, right: 70, bottom: 70, left: 70 }, animated: false });
+          }}
+          polyline={polyline}
+          markers={markers}
+        />
 
         {loading ? (
           <View style={styles.loadingOverlay}>

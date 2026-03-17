@@ -164,6 +164,9 @@ model PricingConfig {
   baseFare       Decimal     @db.Decimal(10, 2)
   // Tarifa base nocturna por tipo. Si es 0, se usa AppConfig.nightBaseFare como fallback.
   nightBaseFare  Decimal     @db.Decimal(10, 2) @default(0)
+  // Hora desde la cual se aplica la tarifa nocturna (0-23) para este tipo.
+  // Si no se configura explícitamente, queda en 20 (fallback histórico).
+  nightStartHour Int         @default(20)
   perKm          Decimal     @db.Decimal(10, 2)
 
   // Nuevo modo de tarifa por tramos.

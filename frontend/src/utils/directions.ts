@@ -38,3 +38,20 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
     return null;
   }
 }
+
+export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: Coords }): Promise<number | null> {
+  const base = osrmBaseUrl();
+  const url = `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=false&alternatives=false&steps=false`;
+
+  try {
+    const res = await fetch(url, { method: "GET", headers: { accept: "application/json" } });
+    if (!res.ok) return null;
+
+    const data: any = await res.json();
+    const dist = data?.routes?.[0]?.distance;
+    if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
+    return Math.round(dist);
+  } catch {
+    return null;
+  }
+}

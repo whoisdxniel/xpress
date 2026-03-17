@@ -49,6 +49,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
 
   const [pricingBaseFare, setPricingBaseFare] = useState("0");
   const [pricingNightBaseFare, setPricingNightBaseFare] = useState("0");
+  const [pricingNightStartHour, setPricingNightStartHour] = useState("20");
   const [pricingIncludedMeters, setPricingIncludedMeters] = useState("0");
   const [pricingStepMeters, setPricingStepMeters] = useState("0");
   const [pricingStepPrice, setPricingStepPrice] = useState("0");
@@ -79,6 +80,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
       const current = byType[pricingType] ?? null;
       setPricingBaseFare(String(current?.baseFare ?? 0));
       setPricingNightBaseFare(String(current?.nightBaseFare ?? 0));
+      setPricingNightStartHour(String(current?.nightStartHour ?? 20));
       setPricingIncludedMeters(String(current?.includedMeters ?? 0));
       setPricingStepMeters(String(current?.stepMeters ?? 0));
       setPricingStepPrice(String(current?.stepPrice ?? 0));
@@ -93,6 +95,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
     const current = pricingByType[pricingType] ?? null;
     setPricingBaseFare(String(current?.baseFare ?? 0));
     setPricingNightBaseFare(String(current?.nightBaseFare ?? 0));
+    setPricingNightStartHour(String(current?.nightStartHour ?? 20));
     setPricingIncludedMeters(String(current?.includedMeters ?? 0));
     setPricingStepMeters(String(current?.stepMeters ?? 0));
     setPricingStepPrice(String(current?.stepPrice ?? 0));
@@ -103,6 +106,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
 
     const baseFare = parseNumber(pricingBaseFare);
     const nightBaseFareByType = parseNumber(pricingNightBaseFare);
+    const nightStartByType = parseIntSafe(pricingNightStartHour);
     const includedMeters = parseIntSafe(pricingIncludedMeters);
     const stepMeters = parseIntSafe(pricingStepMeters);
     const stepPrice = parseNumber(pricingStepPrice);
@@ -113,6 +117,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
     if (!Number.isFinite(baseFare) || baseFare < 0) return Alert.alert("Validación", "Tarifa base inválida");
     if (!Number.isFinite(nightBaseFareByType) || nightBaseFareByType < 0)
       return Alert.alert("Validación", "Tarifa base nocturna (por tipo) inválida");
+    if (!Number.isFinite(nightStartByType) || nightStartByType < 0 || nightStartByType > 23)
+      return Alert.alert("Validación", "Hora inicio nocturna (por tipo) inválida (0-23)");
     if (!Number.isFinite(includedMeters) || includedMeters < 0) return Alert.alert("Validación", "Distancia incluida inválida");
     if (!Number.isFinite(stepMeters) || stepMeters < 0) return Alert.alert("Validación", "Metros por tramo inválidos");
     if (!Number.isFinite(stepPrice) || stepPrice < 0) return Alert.alert("Validación", "Precio por tramo inválido");
@@ -131,6 +137,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
         serviceType: pricingType,
         baseFare,
         nightBaseFare: nightBaseFareByType,
+        nightStartHour: nightStartByType,
         includedMeters,
         stepMeters,
         stepPrice,
@@ -230,6 +237,14 @@ export function AdminSettingsScreen({ navigation }: Props) {
           />
 
           <TextField
+            label="Hora inicio nocturna (este tipo) (0-23)"
+            value={pricingNightStartHour}
+            onChangeText={setPricingNightStartHour}
+            keyboardType="number-pad"
+            placeholder="Ej: 20"
+          />
+
+          <TextField
             label="Distancia incluida (m)"
             value={pricingIncludedMeters}
             onChangeText={setPricingIncludedMeters}
@@ -301,6 +316,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
 
         <PrimaryButton
           label={savingConfig ? "Guardando..." : "Guardar configuración"}
+          iconName="save-outline"
           onPress={() => void saveConfig()}
           disabled={savingConfig || loading}
         />

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, PROVIDER_DEFAULT, type Region } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { Screen } from "../components/Screen";
@@ -14,12 +14,21 @@ import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
 import { apiAdminAssignRideDriver, apiAdminListDrivers } from "../admin/admin.api";
 import { serviceTypeLabel } from "../utils/serviceType";
+import { getDrivingRouteDistanceMeters } from "../utils/directions";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AdminRideAssignMap">;
 
 type DriverRow = any;
 
 type Coords = { lat: number; lng: number };
+
+function regionFromCenter(center: Coords): Region {
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+}
+
+function toLatLng(p: Coords): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
+}
 
 function toNum(v: any): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -43,8 +52,6 @@ export function AdminRideAssignMapScreen({ route, navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
 
-  const mapRef = useRef<MapView | null>(null);
-
   const ride = route.params.ride;
 
   const pickup = useMemo(() => {
@@ -55,9 +62,7 @@ export function AdminRideAssignMapScreen({ route, navigation }: Props) {
 
   const serviceTypeWanted = (ride?.serviceTypeWanted ?? "CARRO") as any;
 
-  const region: Region = useMemo(() => {
-    return { latitude: pickup.lat, longitude: pickup.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
-  }, [pickup.lat, pickup.lng]);
+  const initialCenter = useMemo(() => ({ lat: pickup.lat, lng: pickup.lng }), [pickup.lat, pickup.lng]);
 
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,6 +70,10 @@ export function AdminRideAssignMapScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDriver, setSelectedDriver] = useState<DriverRow | null>(null);
+  const [selectedRouteDistance, setSelectedRouteDistance] = useState<number | null>(null);
+  const [routeDistanceLoading, setRouteDistanceLoading] = useState(false);
+
+  const mapRef = useRef<AppMapRef | null>(null);
 
   const title = useMemo(() => {
     const shortId = ride?.id ? String(ride.id).slice(-6) : "—";
@@ -113,11 +122,52 @@ export function AdminRideAssignMapScreen({ route, navigation }: Props) {
     }
   }
 
-  const selectedDistance = useMemo(() => {
+  const selectedDistanceApprox = useMemo(() => {
     if (!selectedDriver?.location) return null;
     const dpos = { lat: toNum(selectedDriver.location.lat), lng: toNum(selectedDriver.location.lng) };
     return Math.round(haversineMeters(pickup, dpos));
   }, [pickup, selectedDriver?.location]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSelectedRouteDistance(null);
+
+    if (!selectedDriver?.location) return;
+    const to = { lat: toNum(selectedDriver.location.lat), lng: toNum(selectedDriver.location.lng) };
+    if (!Number.isFinite(to.lat) || !Number.isFinite(to.lng) || (to.lat === 0 && to.lng === 0)) return;
+
+    setRouteDistanceLoading(true);
+    void (async () => {
+      const dist = await getDrivingRouteDistanceMeters({ from: pickup, to });
+      if (cancelled) return;
+      setSelectedRouteDistance(dist);
+      setRouteDistanceLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pickup.lat, pickup.lng, selectedDriver?.location]);
+
+  const markers = useMemo(() => {
+    const items: AppMapMarker[] = [{ id: "pickup", coordinate: toLatLng(pickup), pinColor: colors.gold }];
+
+    for (const d of drivers) {
+      const lat = toNum(d.location?.lat);
+      const lng = toNum(d.location?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) continue;
+      const isSel = selectedDriver?.id === d.id;
+
+      items.push({
+        id: `driver-${String(d.id)}`,
+        coordinate: toLatLng({ lat, lng }),
+        pinColor: isSel ? colors.gold : colors.danger,
+        onPress: () => setSelectedDriver(d),
+      });
+    }
+
+    return items;
+  }, [pickup.lat, pickup.lng, drivers, selectedDriver?.id]);
 
   return (
     <Screen style={{ padding: 0 }}>
@@ -133,39 +183,18 @@ export function AdminRideAssignMapScreen({ route, navigation }: Props) {
       </View>
 
       <View style={styles.mapWrap}>
-        <MapView
+        <AppMap
           ref={(r) => {
             mapRef.current = r;
           }}
           style={StyleSheet.absoluteFill}
-          provider={PROVIDER_DEFAULT}
-          initialRegion={region}
-        >
-          <Marker
-            coordinate={{ latitude: pickup.lat, longitude: pickup.lng }}
-            title="Punto de recogida"
-            description={ride?.pickupAddress ? String(ride.pickupAddress) : undefined}
-            pinColor={colors.gold}
-          />
-
-          {drivers.map((d: any) => {
-            const lat = toNum(d.location?.lat);
-            const lng = toNum(d.location?.lng);
-            if (!lat || !lng) return null;
-
-            const isSel = selectedDriver?.id === d.id;
-            return (
-              <Marker
-                key={d.id}
-                coordinate={{ latitude: lat, longitude: lng }}
-                title={d.fullName}
-                description={d.phone ? `Tel: ${d.phone}` : undefined}
-                pinColor={isSel ? colors.gold : undefined}
-                onPress={() => setSelectedDriver(d)}
-              />
-            );
-          })}
-        </MapView>
+          initialRegion={regionFromCenter(initialCenter)}
+          rotateEnabled
+          pitchEnabled={false}
+          scrollEnabled
+          zoomEnabled
+          markers={markers}
+        />
 
         {loading ? (
           <View style={styles.loadingOverlay}>
@@ -189,7 +218,12 @@ export function AdminRideAssignMapScreen({ route, navigation }: Props) {
               <View style={{ gap: 6 }}>
                 <Text style={styles.sheetLine}>Seleccionado: {selectedDriver.fullName}</Text>
                 <Text style={styles.sheetLine}>Tel: {selectedDriver.phone || "—"}</Text>
-                {selectedDistance != null ? <Text style={styles.sheetLine}>Distancia aprox: {selectedDistance} m</Text> : null}
+                {selectedRouteDistance != null ? (
+                  <Text style={styles.sheetLine}>Distancia por ruta: {selectedRouteDistance} m</Text>
+                ) : routeDistanceLoading ? (
+                  <Text style={styles.sheetLine}>Distancia por ruta: calculando...</Text>
+                ) : null}
+                {selectedDistanceApprox != null ? <Text style={styles.sheetLine}>Distancia aprox (recta): {selectedDistanceApprox} m</Text> : null}
               </View>
             ) : (
               <Text style={styles.sheetMuted}>Toca un chofer en el mapa para seleccionarlo.</Text>

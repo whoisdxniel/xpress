@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, PROVIDER_DEFAULT, type Region } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { Screen } from "../components/Screen";
@@ -16,11 +16,21 @@ import { preloadCoords, readCachedCoords, type Coords } from "../utils/location"
 
 type Props = NativeStackScreenProps<RootStackParamList, "DriverMap">;
 
+type MapPoint = { lat: number; lng: number };
+
+function regionFromCenter(center: MapPoint, close?: boolean): Region {
+  // ~100m: 0.001° lat ≈ 111m (aprox).
+  const delta = close ? 0.001 : 0.03;
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: delta, longitudeDelta: delta };
+}
+
+function toLatLng(p: MapPoint): LatLng {
+  return { latitude: p.lat, longitude: p.lng };
+}
+
 export function DriverMapScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
-
-  const mapRef = useRef<MapView | null>(null);
 
   const fallbackCenter = useMemo(() => ({ lat: 7.7669, lng: -72.2250 }), []);
 
@@ -28,10 +38,12 @@ export function DriverMapScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const region: Region = useMemo(() => {
-    const c = coords ?? fallbackCenter;
-    return { latitude: c.lat, longitude: c.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 };
-  }, [coords, fallbackCenter]);
+  const mapRef = useRef<AppMapRef | null>(null);
+  const userInteractedRef = useRef(false);
+  const shouldRecenterRef = useRef(false);
+  const hasAutoCenteredRef = useRef(false);
+
+  const center = coords ?? null;
 
   async function syncDriverLocation(next: Coords) {
     if (!token) return;
@@ -46,6 +58,7 @@ export function DriverMapScreen({ navigation }: Props) {
 
   async function refresh(opts?: { animate?: boolean }) {
     const animate = opts?.animate ?? true;
+    shouldRecenterRef.current = animate;
 
     setError(null);
     setLoading(true);
@@ -61,13 +74,6 @@ export function DriverMapScreen({ navigation }: Props) {
 
       setCoords(next);
       void syncDriverLocation(next);
-
-      if (animate) {
-        mapRef.current?.animateToRegion(
-          { latitude: next.lat, longitude: next.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-          450
-        );
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo obtener tu ubicación");
     } finally {
@@ -76,9 +82,19 @@ export function DriverMapScreen({ navigation }: Props) {
   }
 
   useEffect(() => {
-    void refresh({ animate: false });
+    void refresh({ animate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (!coords) return;
+    const canAutoCenter = !userInteractedRef.current || shouldRecenterRef.current || !hasAutoCenteredRef.current;
+    if (!canAutoCenter) return;
+
+    mapRef.current?.animateToRegion(regionFromCenter(coords, true), 450);
+    hasAutoCenteredRef.current = true;
+    shouldRecenterRef.current = false;
+  }, [coords?.lat, coords?.lng]);
 
   if (auth.user?.role !== "DRIVER") {
     return (
@@ -104,22 +120,23 @@ export function DriverMapScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.mapWrap}>
-        <MapView
+        <AppMap
           ref={(r) => {
             mapRef.current = r;
           }}
           style={StyleSheet.absoluteFill}
-          provider={PROVIDER_DEFAULT}
-          initialRegion={region}
-        >
-          {coords ? (
-            <Marker
-              coordinate={{ latitude: coords.lat, longitude: coords.lng }}
-              title="Tu ubicación"
-              pinColor={colors.gold}
-            />
-          ) : null}
-        </MapView>
+          initialRegion={regionFromCenter(fallbackCenter, true)}
+          rotateEnabled
+          pitchEnabled={false}
+          scrollEnabled
+          zoomEnabled
+          onUserGesture={() => {
+            userInteractedRef.current = true;
+          }}
+          markers={
+            coords ? ([{ id: "me", coordinate: toLatLng(coords), pinColor: colors.gold }] satisfies AppMapMarker[]) : ([] as AppMapMarker[])
+          }
+        />
 
         {loading ? (
           <View style={styles.loadingOverlay}>
@@ -146,7 +163,12 @@ export function DriverMapScreen({ navigation }: Props) {
             {coords ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : "—"}
           </Text>
 
-          <PrimaryButton label={loading ? "Actualizando..." : "Actualizar ubicación"} onPress={() => void refresh({ animate: true })} disabled={loading} />
+          <PrimaryButton
+            label={loading ? "Actualizando..." : "Actualizar ubicación"}
+            iconName="locate-outline"
+            onPress={() => void refresh({ animate: true })}
+            disabled={loading}
+          />
         </Card>
       </View>
     </Screen>

@@ -57,6 +57,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
   const [nightBaseFare, setNightBaseFare] = useState("0");
   const [nightStartHour, setNightStartHour] = useState("20");
   const [driverCreditChargePercent, setDriverCreditChargePercent] = useState("0");
+  const [fxCopPerUsd, setFxCopPerUsd] = useState("0");
+  const [fxCopPerVes, setFxCopPerVes] = useState("0");
 
   const title = useMemo(() => "Configuración global", []);
 
@@ -70,6 +72,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
       setNightBaseFare(String(cfgRes.appConfig.nightBaseFare ?? 0));
       setNightStartHour(String(cfgRes.appConfig.nightStartHour ?? 20));
       setDriverCreditChargePercent(String(cfgRes.appConfig.driverCreditChargePercent ?? 0));
+      setFxCopPerUsd(String(cfgRes.appConfig.fxCopPerUsd ?? 0));
+      setFxCopPerVes(String(cfgRes.appConfig.fxCopPerVes ?? 0));
 
       const byType: Record<string, any> = {};
       for (const row of pricingRes.pricing ?? []) {
@@ -113,6 +117,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
     const nightFare = parseNumber(nightBaseFare);
     const start = parseIntSafe(nightStartHour);
     const pct = parseNumber(driverCreditChargePercent);
+    const fxUsd = parseNumber(fxCopPerUsd);
+    const fxVes = parseNumber(fxCopPerVes);
 
     if (!Number.isFinite(baseFare) || baseFare < 0) return Alert.alert("Validación", "Tarifa base inválida");
     if (!Number.isFinite(nightBaseFareByType) || nightBaseFareByType < 0)
@@ -125,6 +131,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) return Alert.alert("Validación", "Porcentaje inválido (0-100)");
     if (!Number.isFinite(nightFare) || nightFare < 0) return Alert.alert("Validación", "Tarifa base nocturna inválida");
     if (!Number.isFinite(start) || start < 0 || start > 23) return Alert.alert("Validación", "Hora inicio nocturna inválida (0-23)");
+    if (!Number.isFinite(fxUsd) || fxUsd < 0) return Alert.alert("Validación", "Tasa COP por USD inválida");
+    if (!Number.isFinite(fxVes) || fxVes < 0) return Alert.alert("Validación", "Tasa COP por Bs inválida");
 
     if (includedMeters > 0 && stepMeters <= 0) {
       return Alert.alert("Validación", "Si hay distancia incluida, definí también los metros por tramo");
@@ -152,6 +160,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
         nightStartHour: start,
         driverCreditChargePercent: pct,
         driverCreditChargeMode: "SERVICE_VALUE",
+        fxCopPerUsd: fxUsd,
+        fxCopPerVes: fxVes,
       });
       await load();
       Alert.alert("Listo", "Configuración guardada");
@@ -295,6 +305,31 @@ export function AdminSettingsScreen({ navigation }: Props) {
           />
 
           <Text style={styles.muted}>Si la tarifa base nocturna es 0, no se aplica tarifa nocturna.</Text>
+        </Card>
+
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="cash-outline" size={18} color={colors.gold} />
+            <Text style={styles.sectionTitle}>Monedas</Text>
+          </View>
+
+          <TextField
+            label="Tasa COP por 1 USD"
+            value={fxCopPerUsd}
+            onChangeText={setFxCopPerUsd}
+            keyboardType="number-pad"
+            placeholder="Ej: 4000"
+          />
+
+          <TextField
+            label="Tasa COP por 1 Bs."
+            value={fxCopPerVes}
+            onChangeText={setFxCopPerVes}
+            keyboardType="number-pad"
+            placeholder="Ej: 120"
+          />
+
+          <Text style={styles.muted}>0 = ocultar montos secundarios en USD/Bs.</Text>
         </Card>
 
         <Card style={styles.card}>

@@ -12,6 +12,7 @@ import { buildWhatsappLink } from "../utils/whatsapp";
 import { useAuth } from "../auth/AuthContext";
 import { apiGetRideById } from "../rides/rides.api";
 import { MiniMeetMap } from "../components/MiniMeetMap";
+import { formatCop } from "../utils/currency";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 
@@ -157,7 +158,7 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
           </View>
           <View style={{ flex: 1, alignItems: "flex-end" }}>
             <Text style={styles.bigLabel}>Monto</Text>
-            <Text style={styles.bigValue}>{estimatedPrice != null ? `$${Number(estimatedPrice).toFixed(2)}` : "-"}</Text>
+            <Text style={styles.bigValue}>{estimatedPrice != null ? formatCop(Number(estimatedPrice)) : "-"}</Text>
           </View>
         </View>
 

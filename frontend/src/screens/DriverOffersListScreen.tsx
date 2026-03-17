@@ -14,13 +14,9 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { serviceTypeLabel } from "../utils/serviceType";
 import { ensureForegroundPermission, getLastKnownCoords, getCurrentCoords } from "../utils/location";
+import { formatCop } from "../utils/currency";
 
 type Props = NativeStackScreenProps<RootStackParamList, "DriverOffersList">;
-
-function money(n: number) {
-  const rounded = Math.round(n * 100) / 100;
-  return `$${rounded.toFixed(2)}`;
-}
 
 export function DriverOffersListScreen({ navigation }: Props) {
   const auth = useAuth();
@@ -128,7 +124,7 @@ export function DriverOffersListScreen({ navigation }: Props) {
                 {o.passenger?.fullName ? <Text style={styles.small}>Cliente: {o.passenger.fullName}</Text> : null}
                 {o.passenger?.phone ? <Text style={styles.small}>Teléfono: {o.passenger.phone}</Text> : null}
                 <Text style={styles.small}>Distancia: {Math.round(o.distanceMeters)} m</Text>
-                <Text style={styles.small}>Estimado: {money(o.estimatedPrice)} • Ofrecido: {money(o.offeredPrice)}</Text>
+                <Text style={styles.small}>Estimado: {formatCop(o.estimatedPrice)} • Ofrecido: {formatCop(o.offeredPrice)}</Text>
 
                 <MiniRouteMap
                   pickup={{ lat: o.pickup.lat, lng: o.pickup.lng }}

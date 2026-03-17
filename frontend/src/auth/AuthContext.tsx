@@ -7,11 +7,13 @@ import { apiDriverUpsertLocation } from "../driver/driver.api";
 import { preloadCoords } from "../utils/location";
 import { apiRegisterPushToken } from "../notifications/notifications.api";
 import { ensureAndroidChannels, getNativePushToken, setupNotificationHandlerOnce } from "../notifications/push";
+import { apiGetPublicAppConfig, type PublicAppConfig } from "../config/config.api";
 
 type AuthState = {
   bootstrapped: boolean;
   token: string | null;
   user: MeUser | null;
+  appConfig: PublicAppConfig | null;
 };
 
 type AuthContextValue = AuthState & {
@@ -28,6 +30,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     bootstrapped: false,
     token: null,
     user: null,
+    appConfig: null,
   });
 
   const pushRegisteredRef = useRef<{ userId: string; token: string } | null>(null);
@@ -36,6 +39,24 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     // Habilita banners + sonido también en foreground.
     setupNotificationHandlerOnce();
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await apiGetPublicAppConfig();
+        if (!alive) return;
+        setState((s) => ({ ...s, appConfig: res.appConfig ?? null }));
+      } catch {
+        // silencioso: si falla, la app igual funciona (sólo no muestra montos secundarios)
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [state.token]);
 
   useEffect(() => {
     let alive = true;
@@ -109,18 +130,18 @@ export function AuthProvider(props: { children: React.ReactNode }) {
       if (!alive) return;
 
       if (!token) {
-        setState({ bootstrapped: true, token: null, user: null });
+        setState({ bootstrapped: true, token: null, user: null, appConfig: null });
         return;
       }
 
       try {
         const me = await apiMe(token);
         if (!alive) return;
-        setState({ bootstrapped: true, token, user: me.user });
+        setState((s) => ({ ...s, bootstrapped: true, token, user: me.user }));
       } catch {
         await clearToken();
         if (!alive) return;
-        setState({ bootstrapped: true, token: null, user: null });
+        setState({ bootstrapped: true, token: null, user: null, appConfig: null });
       }
     })();
 
@@ -147,7 +168,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
           // silencioso
         }
       }
-      setState({ bootstrapped: true, token: res.token, user: res.user });
+      setState((s) => ({ ...s, bootstrapped: true, token: res.token, user: res.user }));
     }
 
     async function registerPassenger(input: { email: string; password: string; fullName: string; phone: string }) {
@@ -160,12 +181,12 @@ export function AuthProvider(props: { children: React.ReactNode }) {
           // silencioso
         }
       }
-      setState({ bootstrapped: true, token: res.token, user: res.user });
+      setState((s) => ({ ...s, bootstrapped: true, token: res.token, user: res.user }));
     }
 
     async function logout() {
       await clearToken();
-      setState({ bootstrapped: true, token: null, user: null });
+      setState({ bootstrapped: true, token: null, user: null, appConfig: null });
     }
 
     return {

@@ -19,6 +19,7 @@ import { absoluteUrl } from "../utils/url";
 import { PassengerTechSheetModal } from "../passengers/PassengerTechSheetModal";
 import { getDrivingRoute } from "../utils/directions";
 import { offerStatusLabel } from "../utils/labels";
+import { formatCop } from "../utils/currency";
 
 type Props = NativeStackScreenProps<RootStackParamList, "DriverOfferDetails">;
 
@@ -30,11 +31,6 @@ function regionFromCenter(center: MapPoint): Region {
 
 function toLatLng(p: MapPoint): LatLng {
   return { latitude: p.lat, longitude: p.lng };
-}
-
-function money(n: number) {
-  const rounded = Math.round(n * 100) / 100;
-  return `$${rounded.toFixed(2)}`;
 }
 
 export function DriverOfferDetailsScreen({ route, navigation }: Props) {
@@ -303,7 +299,7 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
 
               <View style={styles.kvRow}>
                 <Ionicons name="cash-outline" size={16} color={colors.mutedText} />
-                <Text style={styles.line}>Estimado: {money(Number(offer.estimatedPrice))} • Ofrecido: {money(Number(offer.offeredPrice))}</Text>
+                <Text style={styles.line}>Estimado: {formatCop(Number(offer.estimatedPrice))} • Ofrecido: {formatCop(Number(offer.offeredPrice))}</Text>
               </View>
 
               <View style={styles.kvRow}>

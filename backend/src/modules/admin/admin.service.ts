@@ -502,6 +502,8 @@ export async function adminGetAppConfig() {
       nightStartHour: appConfig.nightStartHour,
       driverCreditChargeMode: appConfig.driverCreditChargeMode,
       driverCreditChargePercent: Number((appConfig as any).driverCreditChargePercent ?? 0),
+      fxCopPerUsd: Number((appConfig as any).fxCopPerUsd ?? 0),
+      fxCopPerVes: Number((appConfig as any).fxCopPerVes ?? 0),
     },
     pricing: {
       baseFare: Number(pricing?.baseFare ?? 0),
@@ -523,6 +525,8 @@ export async function adminUpdateAppConfig(input: {
   nightStartHour: number;
   driverCreditChargePercent?: number;
   driverCreditChargeMode: "SERVICE_VALUE" | "FIXED_AMOUNT";
+  fxCopPerUsd?: number;
+  fxCopPerVes?: number;
 }) {
   const serviceTypes: ServiceType[] = [
     ServiceType.CARRO,
@@ -542,6 +546,8 @@ export async function adminUpdateAppConfig(input: {
   const stepMeters = Math.max(0, Math.floor(Number(input.pricingStepMeters ?? 0)));
   const stepPrice = Math.max(0, Number(input.pricingStepPrice ?? 0));
   const driverCreditChargePercent = Math.max(0, Math.min(100, Number(input.driverCreditChargePercent ?? 0)));
+  const fxCopPerUsd = input.fxCopPerUsd !== undefined ? Math.max(0, Number(input.fxCopPerUsd)) : undefined;
+  const fxCopPerVes = input.fxCopPerVes !== undefined ? Math.max(0, Number(input.fxCopPerVes)) : undefined;
 
   const updated = await prisma.$transaction(async (tx) => {
     const cfg = await tx.appConfig.upsert({
@@ -553,12 +559,16 @@ export async function adminUpdateAppConfig(input: {
         nightStartHour: input.nightStartHour,
         driverCreditChargeMode: input.driverCreditChargeMode as any,
         driverCreditChargePercent,
+        ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
+        ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
       },
       update: {
         nightBaseFare: input.nightBaseFare,
         nightStartHour: input.nightStartHour,
         driverCreditChargeMode: input.driverCreditChargeMode as any,
         driverCreditChargePercent,
+        ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
+        ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
       },
     });
 
@@ -602,6 +612,8 @@ export async function adminUpdateAppConfig(input: {
       nightStartHour: updated.nightStartHour,
       driverCreditChargeMode: updated.driverCreditChargeMode,
       driverCreditChargePercent: Number((updated as any).driverCreditChargePercent ?? 0),
+      fxCopPerUsd: Number((updated as any).fxCopPerUsd ?? 0),
+      fxCopPerVes: Number((updated as any).fxCopPerVes ?? 0),
     },
     pricing: {
       baseFare: Number(input.pricingBaseFare ?? 0),

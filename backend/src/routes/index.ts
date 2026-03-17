@@ -10,6 +10,7 @@ import { offersRouter } from "../modules/offers/offers.routes";
 import { profileRouter } from "../modules/profile/profile.routes";
 import { uploadsRouter } from "../modules/uploads/uploads.routes";
 import { creditsRouter } from "../modules/credits/credits.routes";
+import { configRouter } from "../modules/config/config.routes";
 
 export const apiRouter = Router();
 
@@ -24,3 +25,4 @@ apiRouter.use("/offers", offersRouter);
 apiRouter.use("/profile", profileRouter);
 apiRouter.use("/uploads", uploadsRouter);
 apiRouter.use("/credits", creditsRouter);
+apiRouter.use("/config", configRouter);

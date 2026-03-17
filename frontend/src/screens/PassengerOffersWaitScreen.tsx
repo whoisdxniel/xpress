@@ -24,6 +24,7 @@ import { MiniMeetMap } from "../components/MiniMeetMap";
 import { MiniRouteMap } from "../components/MiniRouteMap";
 import { setActiveRideOffersRideId } from "../lib/storage";
 import { serviceTypeIconName, serviceTypeLabel } from "../utils/serviceType";
+import { formatCop } from "../utils/currency";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerOffersWait">;
 
@@ -254,7 +255,7 @@ export function PassengerOffersWaitScreen({ route, navigation }: Props) {
                         <View style={{ flex: 1, alignItems: "flex-end" }}>
                           <Text style={styles.bigLabel}>Monto</Text>
                           <Text style={styles.bigValue}>
-                            {estimatedPrice != null ? `$${Number(estimatedPrice).toFixed(2)}` : "-"}
+                            {estimatedPrice != null ? formatCop(Number(estimatedPrice)) : "-"}
                           </Text>
                         </View>
                       </View>

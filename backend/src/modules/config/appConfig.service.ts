@@ -9,6 +9,8 @@ export const DEFAULT_APP_CONFIG = {
   nightStartHour: 20,
   driverCreditChargeMode: DriverCreditChargeMode.SERVICE_VALUE,
   driverCreditChargePercent: 0,
+  fxCopPerUsd: 0,
+  fxCopPerVes: 0,
 } as const;
 
 export async function getAppConfig() {

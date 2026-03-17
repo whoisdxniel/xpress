@@ -11,6 +11,7 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
+import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { apiCreateRide, apiNearbyDrivers } from "../rides/rides.api";
 import type { NearbyDriver, ServiceType } from "../rides/rides.types";
 import { apiEstimateOffer } from "../offers/offers.api";
@@ -501,7 +502,11 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
                 </View>
                 <View style={{ flex: 1, alignItems: "flex-end" }}>
                   <Text style={styles.estimateLabel}>Monto</Text>
-                  <Text style={styles.estimateBigLine}>${Number(estimate.estimatedPrice).toFixed(2)}</Text>
+                  <Text style={styles.estimateBigLine}>{formatCop(Number(estimate.estimatedPrice))}</Text>
+                  {(() => {
+                    const secondary = formatSecondaryFromCop(Number(estimate.estimatedPrice), auth.appConfig ?? {});
+                    return secondary ? <Text style={styles.estimateSmallLine}>{secondary}</Text> : null;
+                  })()}
                 </View>
               </View>
             ) : (
@@ -723,6 +728,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "900",
+  },
+  estimateSmallLine: {
+    color: colors.mutedText,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
   },
   estimateHint: {
     color: colors.mutedText,

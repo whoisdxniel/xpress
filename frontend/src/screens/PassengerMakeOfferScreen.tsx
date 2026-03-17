@@ -17,6 +17,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { getDrivingRoute } from "../utils/directions";
 import { ensureForegroundPermission, getCurrentCoords, getFastCoords, readCachedCoords } from "../utils/location";
+import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerMakeOffer">;
 
@@ -29,11 +30,6 @@ function regionFromCenter(center: MapPoint): Region {
 
 function toLatLng(p: MapPoint): LatLng {
   return { latitude: p.lat, longitude: p.lng };
-}
-
-function money(n: number) {
-  const rounded = Math.round(n * 100) / 100;
-  return `$${rounded.toFixed(2)}`;
 }
 
 export function PassengerMakeOfferScreen({ navigation }: Props) {
@@ -60,6 +56,16 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     if (!Number.isFinite(v)) return null;
     return v;
   }, [offeredPriceText]);
+
+  const estimatedSecondary = useMemo(() => {
+    if (estimatedPrice == null) return null;
+    return formatSecondaryFromCop(estimatedPrice, auth.appConfig ?? {});
+  }, [estimatedPrice, auth.appConfig]);
+
+  const offeredSecondary = useMemo(() => {
+    if (offeredPriceNumber == null) return null;
+    return formatSecondaryFromCop(offeredPriceNumber, auth.appConfig ?? {});
+  }, [offeredPriceNumber, auth.appConfig]);
 
   const [loading, setLoading] = useState(true);
   const [estimating, setEstimating] = useState(false);
@@ -374,7 +380,14 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
           <Text style={styles.line}>Radio de búsqueda: 5 km</Text>
 
           {distanceMeters != null ? <Text style={styles.line}>Distancia estimada: {Math.round(distanceMeters)} m</Text> : null}
-          {estimatedPrice != null ? <Text style={styles.line}>Precio estimado: {money(estimatedPrice)}</Text> : null}
+
+          {estimatedPrice != null ? (
+            <View style={styles.moneyBlock}>
+              <Text style={styles.moneyLabel}>Precio estimado</Text>
+              <Text style={styles.moneyMain}>{formatCop(estimatedPrice)}</Text>
+              {estimatedSecondary ? <Text style={styles.moneySecondary}>{estimatedSecondary}</Text> : null}
+            </View>
+          ) : null}
 
           <SecondaryButton
             label={estimating ? "Generando..." : "Generar estimado"}
@@ -392,6 +405,8 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
               keyboardType="numeric"
               style={styles.input}
             />
+
+            {offeredSecondary ? <Text style={styles.moneySecondary}>{offeredSecondary}</Text> : null}
 
             <View style={styles.row}>
               <SecondaryButton
@@ -517,6 +532,23 @@ const styles = StyleSheet.create({
   },
   sheet: {
     padding: 16,
+  },
+  moneyBlock: {
+    gap: 2,
+    paddingVertical: 6,
+  },
+  moneyLabel: {
+    color: colors.mutedText,
+    fontWeight: "800",
+  },
+  moneyMain: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  moneySecondary: {
+    color: colors.mutedText,
+    fontWeight: "800",
   },
   hint: {
     color: colors.mutedText,

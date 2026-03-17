@@ -31,6 +31,7 @@ import { serviceTypeLabel } from "../utils/serviceType";
 import { rideStatusLabel, roleLabel, userDisplayName } from "../utils/labels";
 import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from "../utils/location";
 import { clearActiveRideOffersRideId, getActiveRideOffersRideId } from "../lib/storage";
+import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -622,6 +623,11 @@ export function HomeScreen({ navigation }: Props) {
     return backend > 0 ? backend : computedRounded;
   }, [attentionRide, meterDistanceMeters, meterIncludedKm, role]);
 
+  const meterSecondary = useMemo(() => {
+    if (meterPriceToShow == null) return null;
+    return formatSecondaryFromCop(Number(meterPriceToShow), auth.appConfig ?? {});
+  }, [meterPriceToShow, auth.appConfig]);
+
   async function driverAction(action: "accept" | "start" | "complete") {
     if (!token || !attentionRide) return;
     setRideActionLoading(true);
@@ -778,7 +784,7 @@ export function HomeScreen({ navigation }: Props) {
               </View>
 
               {attentionRide.agreedPrice != null ? (
-                <Text style={styles.sectionText}>Precio acordado: ${Number(attentionRide.agreedPrice).toFixed(2)}</Text>
+                <Text style={styles.sectionText}>Precio acordado: {formatCop(Number(attentionRide.agreedPrice))}</Text>
               ) : null}
 
               {role === "USER" && attentionRide.matchedDriver ? (
@@ -848,7 +854,7 @@ export function HomeScreen({ navigation }: Props) {
                           />
 
                           {attentionRide.agreedPrice != null ? (
-                            <Text style={styles.meterBigLine}>Monto acordado: ${Number(attentionRide.agreedPrice).toFixed(2)}</Text>
+                            <Text style={styles.meterBigLine}>Monto acordado: {formatCop(Number(attentionRide.agreedPrice))}</Text>
                           ) : null}
                         </View>
                       ) : null}
@@ -884,7 +890,7 @@ export function HomeScreen({ navigation }: Props) {
                           />
 
                           {attentionRide.agreedPrice != null ? (
-                            <Text style={styles.meterBigLine}>Monto acordado: ${Number(attentionRide.agreedPrice).toFixed(2)}</Text>
+                            <Text style={styles.meterBigLine}>Monto acordado: {formatCop(Number(attentionRide.agreedPrice))}</Text>
                           ) : null}
                         </View>
                       ) : (
@@ -898,7 +904,10 @@ export function HomeScreen({ navigation }: Props) {
 
                               <Text style={styles.meterBigLine}>{Math.round(meterDistanceMeters)} m</Text>
                               {meterPriceToShow != null ? (
-                                <Text style={styles.meterBigLine}>${Number(meterPriceToShow).toFixed(2)}</Text>
+                                <>
+                                  <Text style={styles.meterBigLine}>{formatCop(Number(meterPriceToShow))}</Text>
+                                  {meterSecondary ? <Text style={styles.meterSmallLine}>{meterSecondary}</Text> : null}
+                                </>
                               ) : null}
                             </View>
 
@@ -1164,7 +1173,7 @@ export function HomeScreen({ navigation }: Props) {
                   </View>
 
                   <Text style={styles.sectionText}>
-                    Ofrecido: ${Number(o.offeredPrice).toFixed(2)} • Estimado: ${Number(o.estimatedPrice).toFixed(2)}
+                    Ofrecido: {formatCop(Number(o.offeredPrice))} • Estimado: {formatCop(Number(o.estimatedPrice))}
                   </Text>
                 </Card>
               </Pressable>
@@ -1195,7 +1204,7 @@ export function HomeScreen({ navigation }: Props) {
           {openOffer ? (
             <>
               <Text style={styles.sectionText}>Servicio: {serviceTypeLabel(openOffer.serviceTypeWanted)}</Text>
-              <Text style={styles.sectionText}>Ofrecido: ${Number(openOffer.offeredPrice).toFixed(2)}</Text>
+              <Text style={styles.sectionText}>Ofrecido: {formatCop(Number(openOffer.offeredPrice))}</Text>
               <Text style={styles.sectionText}>Radio: {openOffer.searchRadiusM} m</Text>
 
               <View style={{ marginTop: 10 }}>
@@ -1485,6 +1494,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "900",
+  },
+  meterSmallLine: {
+    color: colors.mutedText,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
   },
 
   noticeBox: {

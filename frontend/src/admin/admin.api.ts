@@ -105,6 +105,8 @@ export function apiAdminGetAppConfig(token: string) {
       nightStartHour: number;
       driverCreditChargeMode: DriverCreditChargeMode;
       driverCreditChargePercent: number;
+      fxCopPerUsd: number;
+      fxCopPerVes: number;
     };
     pricing: {
       baseFare: number;
@@ -132,6 +134,8 @@ export function apiAdminUpdateAppConfig(
     nightStartHour: number;
     driverCreditChargePercent?: number;
     driverCreditChargeMode?: DriverCreditChargeMode;
+    fxCopPerUsd?: number;
+    fxCopPerVes?: number;
   }
 ) {
   const body: any = {
@@ -139,6 +143,8 @@ export function apiAdminUpdateAppConfig(
     nightStartHour: input.nightStartHour,
     driverCreditChargePercent: input.driverCreditChargePercent,
     driverCreditChargeMode: input.driverCreditChargeMode,
+    fxCopPerUsd: input.fxCopPerUsd,
+    fxCopPerVes: input.fxCopPerVes,
   };
 
   if (input.pricingBaseFare !== undefined) body.pricingBaseFare = input.pricingBaseFare;
@@ -155,6 +161,8 @@ export function apiAdminUpdateAppConfig(
       nightStartHour: number;
       driverCreditChargeMode: DriverCreditChargeMode;
       driverCreditChargePercent: number;
+      fxCopPerUsd: number;
+      fxCopPerVes: number;
     };
     pricing: {
       baseFare: number;

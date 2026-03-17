@@ -8,20 +8,9 @@ import { Card } from "../components/Card";
 import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
 import { apiGetMyCredits } from "../credits/credits.api";
+import { formatCop } from "../utils/currency";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Credits">;
-
-function formatCop(value: number) {
-  try {
-    return new Intl.NumberFormat("es-CO", {
-      style: "currency",
-      currency: "COP",
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `COP ${Math.round(value)}`;
-  }
-}
 
 export function CreditsScreen(_props: Props) {
   const auth = useAuth();

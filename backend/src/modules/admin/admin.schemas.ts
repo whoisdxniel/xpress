@@ -111,4 +111,9 @@ export const UpdateAppConfigSchema = z.object({
   // Débito chofer
   driverCreditChargePercent: z.coerce.number().min(0).max(100).optional().default(0),
   driverCreditChargeMode: z.enum(["SERVICE_VALUE", "FIXED_AMOUNT"]).optional().default("SERVICE_VALUE"),
+
+  // Tasas para mostrar montos secundarios.
+  // Interpretación: COP por 1 unidad.
+  fxCopPerUsd: z.coerce.number().nonnegative().optional(),
+  fxCopPerVes: z.coerce.number().nonnegative().optional(),
 });

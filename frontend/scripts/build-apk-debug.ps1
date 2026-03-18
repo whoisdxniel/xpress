@@ -21,6 +21,17 @@ if (-not $env:NODE_ENV) {
 
 $androidDir = Resolve-Path (Join-Path $PSScriptRoot '..\android')
 
+# Sync custom notification sounds into Android raw resources.
+$rawDir = Join-Path $androidDir 'app\src\main\res\raw'
+New-Item -ItemType Directory -Force -Path $rawDir | Out-Null
+$soundsDir = Resolve-Path -ErrorAction SilentlyContinue (Join-Path $PSScriptRoot '..\assets\notifications')
+if ($soundsDir) {
+  $sounds = Get-ChildItem -Path $soundsDir -Filter *.mp3 -File -ErrorAction SilentlyContinue
+  if ($sounds -and $sounds.Count -gt 0) {
+    Copy-Item -Force -Path (Join-Path $soundsDir '*.mp3') -Destination $rawDir
+  }
+}
+
 $gradleProps = Join-Path $androidDir 'gradle.properties'
 if (Test-Path $gradleProps) {
   $gp = Get-Content -Raw -Path $gradleProps

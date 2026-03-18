@@ -2,6 +2,8 @@ import { PushPlatform } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { getFCMOrNull } from "../../integrations/fcm";
 
+let warnedFcmNotConfigured = false;
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -27,7 +29,13 @@ export async function sendPushToUser(params: {
   channelId?: string;
 }) {
   const messaging = getFCMOrNull();
-  if (!messaging) return { ok: false as const, reason: "FCM_NOT_CONFIGURED" };
+  if (!messaging) {
+    if (!warnedFcmNotConfigured) {
+      warnedFcmNotConfigured = true;
+      console.warn("[push] FCM no configurado. Revisar FCM_SERVICE_ACCOUNT_JSON/FCM_SERVICE_ACCOUNT_PATH");
+    }
+    return { ok: false as const, reason: "FCM_NOT_CONFIGURED" };
+  }
 
   const tokens = await prisma.pushToken.findMany({ where: { userId: params.userId } });
   if (tokens.length === 0) return { ok: true as const, sent: 0, failed: 0 };

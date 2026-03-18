@@ -98,6 +98,13 @@ export async function ensureAndroidChannels() {
     vibrationPattern: [0, 250, 250, 250],
     sound: "uber_llego",
   });
+
+  await Notifications.setNotificationChannelAsync("disponibles", {
+    name: "Solicitudes cercanas",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    sound: "disponibles",
+  });
 }
 
 export async function getNativePushToken() {

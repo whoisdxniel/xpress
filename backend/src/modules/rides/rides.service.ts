@@ -1,4 +1,4 @@
-import { OfferStatus, RideCandidateStatus, RideStatus, ServiceType } from "@prisma/client";
+import { DriverStatus, OfferStatus, RideCandidateStatus, RideStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { buildWhatsappLink } from "../../utils/whatsapp";
@@ -380,6 +380,69 @@ export async function createRide(params: {
 
   emitToUser(params.userId, "ride:created", { rideId: ride.id });
 
+  // Push a choferes disponibles dentro del radio.
+  // Fire-and-forget: no bloquea la creación.
+  void (async () => {
+    try {
+      const pickup = { lat: Number(ride.pickupLat), lng: Number(ride.pickupLng) };
+      const radiusM = Math.max(250, Math.min(50_000, Number(ride.searchRadiusM ?? params.searchRadiusM ?? 2000)));
+      const radiusKm = radiusM / 1000;
+      const box = boundingBoxKm(pickup, radiusKm);
+      const freshSince = driverLocationFreshSince();
+
+      const drivers = await prisma.driverProfile.findMany({
+        where: {
+          status: DriverStatus.APPROVED,
+          isAvailable: true,
+          user: { is: { isActive: true } },
+          serviceType: ride.serviceTypeWanted,
+          location: {
+            is: {
+              updatedAt: { gte: freshSince },
+              lat: { gte: box.minLat, lte: box.maxLat },
+              lng: { gte: box.minLng, lte: box.maxLng },
+            },
+          },
+          matchedRides: {
+            none: {
+              status: { in: [RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS] },
+            },
+          },
+        },
+        select: {
+          userId: true,
+          location: { select: { lat: true, lng: true } },
+        },
+        take: 200,
+      });
+
+      const targets = drivers
+        .map((d) => {
+          const loc = d.location ? { lat: Number(d.location.lat), lng: Number(d.location.lng) } : null;
+          const dist = loc ? haversineDistanceMeters(pickup, loc) : Number.NaN;
+          return { userId: d.userId, distanceMeters: Math.round(dist) };
+        })
+        .filter((x) => Number.isFinite(x.distanceMeters) && x.distanceMeters <= radiusM)
+        .sort((a, b) => a.distanceMeters - b.distanceMeters)
+        .slice(0, 50);
+
+      await Promise.all(
+        targets.map((t) =>
+          sendPushToUser({
+            userId: t.userId,
+            title: "Solicitud cerca",
+            body: "Nuevo cliente solicitó un servicio.",
+            soundName: "disponibles",
+            channelId: "disponibles",
+            data: { rideId: ride.id, type: "RIDE_AVAILABLE" },
+          }).catch(() => null)
+        )
+      );
+    } catch {
+      // silencioso
+    }
+  })();
+
   // Admin ve todas las solicitudes
   void sendPushToAdmins({
     title: "Nueva solicitud",
@@ -683,6 +746,11 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
     return { ok: false as const, status: 409 as const, error: "Already selected" };
   }
 
+  // Evita spam por taps repetidos.
+  if (existing?.status === RideCandidateStatus.OFFERED) {
+    return { ok: true as const, candidate: existing };
+  }
+
   const candidate = existing
     ? await prisma.rideCandidate.update({
         where: { id: existing.id },
@@ -693,6 +761,16 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
       });
 
   emitToUser(ride.passenger.userId, "ride:offers:changed", { rideId: ride.id });
+
+  // Push al cliente por cada ejecutivo que se ofrece.
+  void sendPushToUser({
+    userId: ride.passenger.userId,
+    title: "Nueva oferta",
+    body: `${driver.fullName} se ofreció.`,
+    soundName: "aceptar_servicio",
+    channelId: "aceptar_servicio",
+    data: { rideId: ride.id, driverId: driver.id, type: "RIDE_OFFERED" },
+  });
 
   return { ok: true as const, candidate };
 }
@@ -934,15 +1012,6 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
   for (const item of withdrawnOffers) {
     emitToUser(item.passengerUserId, "ride:offers:changed", { rideId: item.rideId });
   }
-
-  void sendPushToUser({
-    userId: params.userId,
-    title: "Servicio aceptado",
-    body: "Tu servicio fue aceptado",
-    soundName: "aceptar_servicio",
-    channelId: "aceptar_servicio",
-    data: { rideId: updated.id, type: "RIDE_ACCEPTED" },
-  });
 
   sendPushToUserBurst({
     userId: driver.userId,

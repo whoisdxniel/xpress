@@ -37,7 +37,8 @@
           "sounds": [
             "./assets/notifications/tienes_servicio.mp3",
             "./assets/notifications/aceptar_servicio.mp3",
-            "./assets/notifications/uber_llego.mp3"
+            "./assets/notifications/uber_llego.mp3",
+            "./assets/notifications/disponibles.mp3"
           ]
         }
       ],

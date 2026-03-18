@@ -345,7 +345,9 @@ export function HomeScreen({ navigation }: Props) {
 
     const isOfferRide = Boolean(attentionRide?.offer);
 
-    const shouldRun = Boolean(token && isFocused && role === "DRIVER" && rideId && rideStatus === "IN_PROGRESS" && !isOfferRide && !meterPaused);
+    // El taxímetro debe seguir contando aunque el chofer navegue a otra pantalla
+    // (mientras esta pantalla siga montada y la ride esté en progreso).
+    const shouldRun = Boolean(token && role === "DRIVER" && rideId && rideStatus === "IN_PROGRESS" && !isOfferRide && !meterPaused);
 
     const stop = () => {
       if (meterWatchRef.current) {
@@ -444,9 +446,10 @@ export function HomeScreen({ navigation }: Props) {
 
         const sub = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.Highest,
-            timeInterval: 5000,
-            distanceInterval: 5,
+            // Más frecuente para reducir subestimación (línea recta) y mantener estabilidad.
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 2000,
+            distanceInterval: 1,
           },
           (pos) => {
             if (cancelled) return;
@@ -458,25 +461,50 @@ export function HomeScreen({ navigation }: Props) {
             };
 
             // Filtrar lecturas muy imprecisas (suele generar saltos grandes).
-            if (coords.accuracy != null && coords.accuracy > 35) {
+            if (coords.accuracy != null && coords.accuracy > 50) {
               return;
             }
 
             const prev = meterLastCoordsRef.current;
-            meterLastCoordsRef.current = coords;
-            if (!prev) return;
+            if (!prev) {
+              meterLastCoordsRef.current = coords;
+              return;
+            }
 
             const dtSec = Math.max(0, (coords.ts - prev.ts) / 1000);
-            if (dtSec <= 0) return;
+            if (dtSec <= 0.2) return;
 
             const delta = haversineMeters(prev, coords);
 
             // Filtrado básico de saltos raros
-            if (!Number.isFinite(delta) || delta <= 0.5 || delta > 500) return;
+            if (!Number.isFinite(delta) || delta <= 0.5) {
+              // Delta insignificante: actualizamos ancla para no acumular deriva.
+              meterLastCoordsRef.current = coords;
+              return;
+            }
+
+            // Salto gigante: no cambiamos el punto previo (evita perder distancia por rebotes)
+            if (delta > 1000) return;
 
             // Filtrado por velocidad (m/s). Evita sumar metros por rebotes de GPS.
-            const speed = delta / dtSec;
-            if (!Number.isFinite(speed) || speed > 45) return;
+            const deviceSpeed =
+              typeof pos.coords.speed === "number" && Number.isFinite(pos.coords.speed) && pos.coords.speed >= 0 ? pos.coords.speed : null;
+            const speed = deviceSpeed ?? delta / dtSec;
+            if (!Number.isFinite(speed) || speed > 55) return;
+
+            // Umbral mínimo según precisión: ignora movimiento dentro del margen de error.
+            const prevAcc = typeof prev.accuracy === "number" && Number.isFinite(prev.accuracy) ? prev.accuracy : 15;
+            const curAcc = typeof coords.accuracy === "number" && Number.isFinite(coords.accuracy) ? coords.accuracy : 15;
+            const movementThreshold = Math.max(2, Math.min(15, (prevAcc + curAcc) / 2));
+
+            if (delta < movementThreshold) {
+              // Ruido/deriva típica: movemos el ancla pero no sumamos metros.
+              meterLastCoordsRef.current = coords;
+              return;
+            }
+
+            // Aceptado: actualizar ancla y sumar.
+            meterLastCoordsRef.current = coords;
 
             meterDistanceRef.current += delta;
             const rounded = Math.round(meterDistanceRef.current);

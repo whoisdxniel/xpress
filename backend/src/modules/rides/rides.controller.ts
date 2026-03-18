@@ -52,7 +52,7 @@ export async function createRideController(req: Request, res: Response) {
     searchRadiusM: input.searchRadiusM,
   });
 
-  if (!result.ok) return res.status(400).json({ message: result.error });
+  if (!result.ok) return res.status((result as any).status ?? 400).json({ message: result.error });
   return res.status(201).json(result);
 }
 

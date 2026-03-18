@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Screen } from "../components/Screen";
@@ -10,7 +10,8 @@ import { SecondaryButton } from "../components/SecondaryButton";
 import { colors } from "../theme/colors";
 import { buildWhatsappLink } from "../utils/whatsapp";
 import { useAuth } from "../auth/AuthContext";
-import { apiGetRideById } from "../rides/rides.api";
+import { apiCancelRide, apiGetRideById } from "../rides/rides.api";
+import { clearActiveRideOffersRideId } from "../lib/storage";
 import { MiniMeetMap } from "../components/MiniMeetMap";
 import { formatCop } from "../utils/currency";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -35,6 +36,8 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number; updatedAt?: string } | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
+
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const firstLoadRef = useRef(true);
 
@@ -61,6 +64,34 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   async function openDriver() {
     if (!driverLink) return;
     await Linking.openURL(driverLink);
+  }
+
+  async function cancelRideNow() {
+    if (!token) return;
+
+    setCancelLoading(true);
+    try {
+      await apiCancelRide(token, { rideId });
+      await clearActiveRideOffersRideId();
+      navigation.popToTop();
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "No se pudo cancelar el servicio");
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
+  function confirmCancelRide() {
+    Alert.alert("Cancelar servicio", "Vas a cancelar tu solicitud actual. ¿Querés continuar?", [
+      { text: "Volver", style: "cancel" },
+      {
+        text: "Cancelar",
+        style: "destructive",
+        onPress: () => {
+          void cancelRideNow();
+        },
+      },
+    ]);
   }
 
   useEffect(() => {
@@ -125,77 +156,84 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   }, [token, rideId]);
 
   return (
-    <Screen>
-      <View style={styles.headerRow}>
-        <Ionicons name="time-outline" size={20} color={colors.gold} />
-        <GoldTitle>En espera</GoldTitle>
-      </View>
-
-      <Card style={{ marginTop: 16, gap: 10 }}>
-        <Text style={styles.title}>Tu solicitud fue enviada</Text>
-        <Text style={styles.text}>Ejecutivo seleccionado: {driverName}</Text>
-        <Text style={styles.text}>ID solicitud: {rideId}</Text>
-        <Text style={styles.textMuted}>
-          Si necesitás ayuda, podés hablar con ZOE por WhatsApp.
-        </Text>
-
-        {pickup && driverLoc ? (
-          <View style={{ marginTop: 6 }}>
-            <MiniMeetMap
-              height={150}
-              passenger={{ lat: pickup.lat, lng: pickup.lng }}
-              driver={{ lat: driverLoc.lat, lng: driverLoc.lng }}
-              driverIconName="car"
-              passengerIconName="person"
-            />
-          </View>
-        ) : null}
-
-        <View style={styles.bigRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.bigLabel}>Distancia</Text>
-            <Text style={styles.bigValue}>{distanceMeters != null ? `${Math.round(distanceMeters)} m` : "-"}</Text>
-          </View>
-          <View style={{ flex: 1, alignItems: "flex-end" }}>
-            <Text style={styles.bigLabel}>Monto</Text>
-            <Text style={styles.bigValue}>{estimatedPrice != null ? formatCop(Number(estimatedPrice)) : "-"}</Text>
-          </View>
+    <Screen style={{ padding: 0 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+        <View style={styles.headerRow}>
+          <Ionicons name="time-outline" size={20} color={colors.gold} />
+          <GoldTitle>En espera</GoldTitle>
         </View>
 
-        <View style={styles.approxRow}>
-          <Ionicons name="information-circle-outline" size={16} color={colors.mutedText} />
-          <Text style={styles.approxText}>
-            Distancia <Ionicons name="navigate-outline" size={14} color={colors.mutedText} /> y monto{" "}
-            <Ionicons name="cash-outline" size={14} color={colors.mutedText} /> son aproximados. El taxímetro define el valor real.
+        <Card style={{ marginTop: 16, gap: 10 }}>
+          <Text style={styles.title}>Tu solicitud fue enviada</Text>
+          <Text style={styles.text}>Ejecutivo seleccionado: {driverName}</Text>
+          <Text style={styles.text}>ID solicitud: {rideId}</Text>
+          <Text style={styles.textMuted}>
+            Si necesitás ayuda, podés hablar con ZOE por WhatsApp.
           </Text>
-        </View>
 
-        {pickup?.address ? <Text style={styles.text}>Salida: {pickup.address}</Text> : null}
+          {pickup && driverLoc ? (
+            <View style={{ marginTop: 6 }}>
+              <MiniMeetMap
+                height={150}
+                passenger={{ lat: pickup.lat, lng: pickup.lng }}
+                driver={{ lat: driverLoc.lat, lng: driverLoc.lng }}
+                driverIconName="car"
+                passengerIconName="person"
+              />
+            </View>
+          ) : null}
 
-        <View style={{ height: 6 }} />
+          <View style={styles.bigRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bigLabel}>Distancia</Text>
+              <Text style={styles.bigValue}>{distanceMeters != null ? `${Math.round(distanceMeters)} m` : "-"}</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: "flex-end" }}>
+              <Text style={styles.bigLabel}>Monto</Text>
+              <Text style={styles.bigValue}>{estimatedPrice != null ? formatCop(Number(estimatedPrice)) : "-"}</Text>
+            </View>
+          </View>
 
-        <PrimaryButton label="Volver al inicio" onPress={() => navigation.popToTop()} />
-        <SecondaryButton label="Hablar con ZOE" onPress={() => void openOperator()} />
+          <View style={styles.approxRow}>
+            <Ionicons name="information-circle-outline" size={16} color={colors.mutedText} />
+            <Text style={styles.approxText}>
+              Distancia <Ionicons name="navigate-outline" size={14} color={colors.mutedText} /> y monto{" "}
+              <Ionicons name="cash-outline" size={14} color={colors.mutedText} /> son aproximados. El taxímetro define el valor real.
+            </Text>
+          </View>
 
-        <View style={{ height: 10 }} />
+          {pickup?.address ? <Text style={styles.text}>Salida: {pickup.address}</Text> : null}
 
-        <Pressable
-          onPress={() => void openDriver()}
-          disabled={!driverLink || driverPhoneLoading}
-          style={({ pressed }) => [
-            styles.execBtn,
-            pressed && !(!driverLink || driverPhoneLoading) ? styles.pressed : null,
-            !driverLink || driverPhoneLoading ? styles.disabled : null,
-          ]}
-        >
-          {driverPhoneLoading ? (
-            <ActivityIndicator color={colors.gold} />
-          ) : (
-            <Ionicons name="car-outline" size={26} color={colors.gold} />
-          )}
-          <Text style={styles.execBtnText}>Hablar con{"\n"}Ejecutivo</Text>
-        </Pressable>
-      </Card>
+          <View style={{ height: 6 }} />
+
+          <PrimaryButton label="Volver al inicio" onPress={() => navigation.popToTop()} />
+          <SecondaryButton
+            label={cancelLoading ? "Cancelando..." : "Cancelar servicio"}
+            onPress={confirmCancelRide}
+            disabled={cancelLoading}
+          />
+          <SecondaryButton label="Hablar con ZOE" onPress={() => void openOperator()} />
+
+          <View style={{ height: 10 }} />
+
+          <Pressable
+            onPress={() => void openDriver()}
+            disabled={!driverLink || driverPhoneLoading}
+            style={({ pressed }) => [
+              styles.execBtn,
+              pressed && !(!driverLink || driverPhoneLoading) ? styles.pressed : null,
+              !driverLink || driverPhoneLoading ? styles.disabled : null,
+            ]}
+          >
+            {driverPhoneLoading ? (
+              <ActivityIndicator color={colors.gold} />
+            ) : (
+              <Ionicons name="car-outline" size={26} color={colors.gold} />
+            )}
+            <Text style={styles.execBtnText}>Hablar con{"\n"}Ejecutivo</Text>
+          </Pressable>
+        </Card>
+      </ScrollView>
     </Screen>
   );
 }

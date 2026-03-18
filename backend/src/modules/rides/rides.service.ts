@@ -212,22 +212,36 @@ export async function createRide(params: {
   });
   if (!passenger) return { ok: false as const, error: "Passenger profile not found" };
 
-  // Si el pasajero crea una nueva solicitud teniendo otra OPEN sin asignación,
-  // borramos la anterior para evitar confusiones (y para que desaparezca a choferes).
-  await prisma.rideRequest.deleteMany({
+  const activeRide = await prisma.rideRequest.findFirst({
     where: {
       passengerId: passenger.id,
-      status: RideStatus.OPEN,
-      matchedDriverId: null,
+      status: { in: [RideStatus.OPEN, RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS] },
     },
+    select: { id: true, status: true },
+    orderBy: { updatedAt: "desc" },
   });
 
-  // Si el pasajero tiene una contraoferta activa, la cancelamos automáticamente.
-  // (Evita estados inconsistentes: ride OPEN + offer OPEN simultáneos.)
-  await prisma.rideOffer.updateMany({
+  if (activeRide) {
+    return {
+      ok: false as const,
+      status: 409 as const,
+      error: "Ya tenés un servicio activo. Cancelalo antes de solicitar otro.",
+    };
+  }
+
+  const openOffer = await prisma.rideOffer.findFirst({
     where: { passengerId: passenger.id, status: OfferStatus.OPEN },
-    data: { status: OfferStatus.CANCELLED },
+    select: { id: true },
+    orderBy: { updatedAt: "desc" },
   });
+
+  if (openOffer) {
+    return {
+      ok: false as const,
+      status: 409 as const,
+      error: "Ya tenés una contraoferta activa. Cancelala antes de solicitar un traslado.",
+    };
+  }
 
   const pricingType = pricingServiceTypeFor(params.serviceTypeWanted as ServiceType);
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });

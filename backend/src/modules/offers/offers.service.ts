@@ -1,4 +1,4 @@
-import { OfferStatus, ServiceType } from "@prisma/client";
+import { OfferStatus, RideStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { sendPushToAdmins, sendPushToUser } from "../notifications/notifications.service";
@@ -131,6 +131,37 @@ export async function createOffer(params: {
     select: { id: true },
   });
   if (!passenger) return { ok: false as const, error: "Passenger profile not found" };
+
+  const activeRide = await prisma.rideRequest.findFirst({
+    where: {
+      passengerId: passenger.id,
+      status: { in: [RideStatus.OPEN, RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS] },
+    },
+    select: { id: true, status: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (activeRide) {
+    return {
+      ok: false as const,
+      status: 409 as const,
+      error: "Ya tenés un servicio activo. Cancelalo antes de crear una contraoferta.",
+    };
+  }
+
+  const openOffer = await prisma.rideOffer.findFirst({
+    where: { passengerId: passenger.id, status: OfferStatus.OPEN },
+    select: { id: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (openOffer) {
+    return {
+      ok: false as const,
+      status: 409 as const,
+      error: "Ya tenés una contraoferta activa. Cancelala antes de crear otra.",
+    };
+  }
 
   const estimation = await estimateOffer({
     serviceTypeWanted: params.serviceTypeWanted,

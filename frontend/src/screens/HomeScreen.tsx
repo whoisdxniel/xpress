@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { buildWhatsappLink } from "../utils/whatsapp";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
-import { apiDriverNearbyRideRequests, apiDriverOfferRide, apiGetActiveRide, apiGetRideById, apiGetRideOffers } from "../rides/rides.api";
+import { apiCancelRide, apiDriverNearbyRideRequests, apiDriverOfferRide, apiGetActiveRide, apiGetRideById, apiGetRideOffers } from "../rides/rides.api";
 import {
   apiDriverAcceptRide,
   apiDriverCompleteRide,
@@ -66,6 +66,8 @@ export function HomeScreen({ navigation }: Props) {
   const [offersRideId, setOffersRideId] = useState<string | null>(null);
   const [offersRideCount, setOffersRideCount] = useState<number>(0);
   const [offersRideLoading, setOffersRideLoading] = useState(false);
+
+  const offersRideFirstLoadRef = useRef(true);
 
   const isFocused = useIsFocused();
 
@@ -274,7 +276,8 @@ export function HomeScreen({ navigation }: Props) {
     const rideId = offersRideId;
 
     async function refreshOffersMeta(currentToken: string, currentRideId: string) {
-      setOffersRideLoading(true);
+      const showSpinner = offersRideFirstLoadRef.current;
+      if (showSpinner) setOffersRideLoading(true);
       try {
         const rideRes = await apiGetRideById(currentToken, { rideId: currentRideId });
         if (!alive) return;
@@ -300,7 +303,8 @@ export function HomeScreen({ navigation }: Props) {
         setOffersRideCount(0);
       } finally {
         if (!alive) return;
-        setOffersRideLoading(false);
+        if (showSpinner) setOffersRideLoading(false);
+        offersRideFirstLoadRef.current = false;
       }
     }
 
@@ -314,6 +318,11 @@ export function HomeScreen({ navigation }: Props) {
       clearInterval(t);
     };
   }, [token, isFocused, role, offersRideId]);
+
+  useEffect(() => {
+    if (!offersRideId) return;
+    offersRideFirstLoadRef.current = true;
+  }, [offersRideId]);
 
   useEffect(() => {
     if (!token) return;
@@ -563,6 +572,17 @@ export function HomeScreen({ navigation }: Props) {
     return Array.isArray(myOffers) && myOffers.length ? myOffers[0] : null;
   }, [myOffers]);
 
+  const userHasActiveRide = useMemo(() => {
+    if (role !== "USER") return false;
+    const status = attentionRide?.status as string | undefined;
+    return status === "OPEN" || status === "ASSIGNED" || status === "ACCEPTED" || status === "MATCHED" || status === "IN_PROGRESS";
+  }, [role, attentionRide?.status]);
+
+  const userHasOpenOffer = useMemo(() => {
+    if (role !== "USER") return false;
+    return Boolean(openOffer);
+  }, [role, openOffer]);
+
   async function cancelMyOffer() {
     if (!token || !openOffer) return;
     setRideActionLoading(true);
@@ -576,6 +596,37 @@ export function HomeScreen({ navigation }: Props) {
     } finally {
       setRideActionLoading(false);
     }
+  }
+
+  async function cancelMyRideNow() {
+    if (!token || !attentionRide) return;
+
+    setRideActionLoading(true);
+    setRideError(null);
+    try {
+      await apiCancelRide(token, { rideId: attentionRide.id });
+      await clearActiveRideOffersRideId();
+      setOffersRideId(null);
+      setOffersRideCount(0);
+      await refreshRide({ showLoading: false });
+    } catch (e) {
+      setRideError(e instanceof Error ? e.message : "No se pudo cancelar el servicio");
+    } finally {
+      setRideActionLoading(false);
+    }
+  }
+
+  function confirmCancelMyRide() {
+    Alert.alert("Cancelar servicio", "Vas a cancelar tu solicitud actual. ¿Querés continuar?", [
+      { text: "Volver", style: "cancel" },
+      {
+        text: "Cancelar servicio",
+        style: "destructive",
+        onPress: () => {
+          void cancelMyRideNow();
+        },
+      },
+    ]);
   }
 
   const ratingDirection = role === "USER" ? "PASSENGER_TO_DRIVER" : role === "DRIVER" ? "DRIVER_TO_PASSENGER" : null;
@@ -716,7 +767,11 @@ export function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionText}>Acá vas a solicitar traslados, hacer ofertas y ver tu historial.</Text>
 
             <View style={{ marginTop: 10, gap: 10 }}>
-              <PrimaryButton label="Solicitar traslado" onPress={() => navigation.navigate("PassengerDriversMap")} />
+              <PrimaryButton
+                label="Solicitar traslado"
+                onPress={() => navigation.navigate("PassengerDriversMap")}
+                disabled={userHasActiveRide || userHasOpenOffer}
+              />
               <SecondaryButton
                 label={
                   offersRideId
@@ -731,7 +786,11 @@ export function HomeScreen({ navigation }: Props) {
                 }}
                 disabled={!offersRideId || offersRideLoading}
               />
-              <SecondaryButton label="Hacer oferta" onPress={() => navigation.navigate("PassengerMakeOffer")} />
+              <SecondaryButton
+                label="Hacer oferta"
+                onPress={() => navigation.navigate("PassengerMakeOffer")}
+                disabled={userHasActiveRide || userHasOpenOffer}
+              />
               <View style={{ height: 6 }} />
               <SecondaryButton label="Historial" onPress={() => navigation.navigate("RidesHistory")} />
             </View>
@@ -809,6 +868,16 @@ export function HomeScreen({ navigation }: Props) {
                     </Text>
                   ) : null}
                 </>
+              ) : null}
+
+              {role === "USER" && (attentionRide.status === "OPEN" || attentionRide.status === "ASSIGNED" || attentionRide.status === "ACCEPTED" || attentionRide.status === "MATCHED") ? (
+                <View style={{ marginTop: 10 }}>
+                  <SecondaryButton
+                    label={rideActionLoading ? "Cancelando..." : "Cancelar servicio"}
+                    onPress={confirmCancelMyRide}
+                    disabled={rideActionLoading}
+                  />
+                </View>
               ) : null}
               {role === "DRIVER" && attentionRide.passenger ? (
                 <>
@@ -1192,7 +1261,7 @@ export function HomeScreen({ navigation }: Props) {
         </Card>
       ) : null}
 
-      {role === "USER" && !attentionRide ? (
+      {role === "USER" && openOffer ? (
         <Card style={styles.card}>
           <View style={styles.sectionTitleRow}>
             <Ionicons name="pricetag-outline" size={18} color={colors.gold} />
@@ -1201,31 +1270,27 @@ export function HomeScreen({ navigation }: Props) {
 
           {offersLoading ? <Text style={styles.sectionText}>Actualizando...</Text> : null}
 
-          {openOffer ? (
-            <>
-              <Text style={styles.sectionText}>Servicio: {serviceTypeLabel(openOffer.serviceTypeWanted)}</Text>
-              <Text style={styles.sectionText}>Ofrecido: {formatCop(Number(openOffer.offeredPrice))}</Text>
-              <Text style={styles.sectionText}>Radio: {openOffer.searchRadiusM} m</Text>
+          <>
+            <Text style={styles.sectionText}>Servicio: {serviceTypeLabel(openOffer.serviceTypeWanted)}</Text>
+            <Text style={styles.sectionText}>Ofrecido: {formatCop(Number(openOffer.offeredPrice))}</Text>
+            <Text style={styles.sectionText}>Radio: {openOffer.searchRadiusM} m</Text>
 
-              <View style={{ marginTop: 10 }}>
-                <MiniRouteMap
-                  pickup={{ lat: Number(openOffer.pickupLat), lng: Number(openOffer.pickupLng) }}
-                  dropoff={{ lat: Number(openOffer.dropoffLat), lng: Number(openOffer.dropoffLng) }}
-                  routePath={(openOffer.routePath ?? null) as any}
-                />
-              </View>
+            <View style={{ marginTop: 10 }}>
+              <MiniRouteMap
+                pickup={{ lat: Number(openOffer.pickupLat), lng: Number(openOffer.pickupLng) }}
+                dropoff={{ lat: Number(openOffer.dropoffLat), lng: Number(openOffer.dropoffLng) }}
+                routePath={(openOffer.routePath ?? null) as any}
+              />
+            </View>
 
-              <View style={{ marginTop: 10 }}>
-                <SecondaryButton
-                  label={rideActionLoading ? "Cancelando..." : "Cancelar contraoferta"}
-                  onPress={() => void cancelMyOffer()}
-                  disabled={rideActionLoading}
-                />
-              </View>
-            </>
-          ) : (
-            <Text style={styles.sectionText}>No tenés contraofertas activas.</Text>
-          )}
+            <View style={{ marginTop: 10 }}>
+              <SecondaryButton
+                label={rideActionLoading ? "Cancelando..." : "Cancelar contraoferta"}
+                onPress={() => void cancelMyOffer()}
+                disabled={rideActionLoading}
+              />
+            </View>
+          </>
         </Card>
       ) : null}
 

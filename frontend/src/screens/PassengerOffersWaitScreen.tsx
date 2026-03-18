@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Screen } from "../components/Screen";
@@ -10,6 +10,7 @@ import { SecondaryButton } from "../components/SecondaryButton";
 import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
 import {
+  apiCancelRide,
   apiGetDriverTechSheet,
   apiGetRideById,
   apiGetRideOffers,
@@ -22,7 +23,7 @@ import { DriverTechSheetModal } from "../drivers/DriverTechSheetModal";
 import { absoluteUrl } from "../utils/url";
 import { MiniMeetMap } from "../components/MiniMeetMap";
 import { MiniRouteMap } from "../components/MiniRouteMap";
-import { setActiveRideOffersRideId } from "../lib/storage";
+import { clearActiveRideOffersRideId, setActiveRideOffersRideId } from "../lib/storage";
 import { serviceTypeIconName, serviceTypeLabel } from "../utils/serviceType";
 import { formatCop } from "../utils/currency";
 
@@ -54,6 +55,7 @@ export function PassengerOffersWaitScreen({ route, navigation }: Props) {
   const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
 
   const [actionDriverId, setActionDriverId] = useState<string | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const [techOpen, setTechOpen] = useState(false);
   const [techDriver, setTechDriver] = useState<any | null>(null);
@@ -183,6 +185,35 @@ export function PassengerOffersWaitScreen({ route, navigation }: Props) {
     }
   }
 
+  async function cancelRideNow() {
+    if (!token) return;
+
+    setCancelLoading(true);
+    setError(null);
+    try {
+      await apiCancelRide(token, { rideId });
+      await clearActiveRideOffersRideId();
+      navigation.popToTop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cancelar el servicio");
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
+  function confirmCancelRide() {
+    Alert.alert("Cancelar servicio", "Vas a cancelar tu solicitud. ¿Querés continuar?", [
+      { text: "Volver", style: "cancel" },
+      {
+        text: "Cancelar",
+        style: "destructive",
+        onPress: () => {
+          void cancelRideNow();
+        },
+      },
+    ]);
+  }
+
   if (!canUse) {
     return (
       <Screen>
@@ -228,6 +259,14 @@ export function PassengerOffersWaitScreen({ route, navigation }: Props) {
             <Text style={[styles.bannerText, { color: colors.danger }]}>{error}</Text>
           </View>
         ) : null}
+
+        <View style={{ marginTop: 10 }}>
+          <SecondaryButton
+            label={cancelLoading ? "Cancelando..." : "Cancelar servicio"}
+            onPress={confirmCancelRide}
+            disabled={cancelLoading}
+          />
+        </View>
 
         <Card style={{ marginTop: 16, gap: 6 }}>
 

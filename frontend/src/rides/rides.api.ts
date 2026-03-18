@@ -17,6 +17,14 @@ export function apiConfirmRideComplete(token: string, rideId: string) {
   });
 }
 
+export function apiCancelRide(token: string, input: { rideId: string }) {
+  return apiRequest<{ ok: true; ride: any }>({
+    method: "POST",
+    path: `/rides/${input.rideId}/cancel`,
+    token,
+  });
+}
+
 export function apiNearbyDrivers(
   token: string,
   input: { lat: number; lng: number; radiusM?: number; serviceType?: ServiceType }

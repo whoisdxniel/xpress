@@ -65,6 +65,9 @@ export async function getMyProfile(params: { userId: string; role: "USER" | "DRI
         firstName: driver.firstName ?? fallback.firstName,
         lastName: driver.lastName ?? fallback.lastName,
         phone: driver.phone,
+        mobilePayBank: driver.mobilePayBank ?? null,
+        mobilePayDocument: driver.mobilePayDocument ?? null,
+        mobilePayPhone: driver.mobilePayPhone ?? null,
         photoUrl: driver.photoUrl,
         serviceType: driver.serviceType,
         vehicle: driver.vehicle
@@ -124,7 +127,14 @@ export async function updateMyPassengerProfile(params: {
 
 export async function updateMyDriverProfile(params: {
   userId: string;
-  input: { firstName?: string; lastName?: string; phone?: string };
+  input: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    mobilePayBank?: string | null;
+    mobilePayDocument?: string | null;
+    mobilePayPhone?: string | null;
+  };
 }) {
   const user = await prisma.user.findUnique({ where: { id: params.userId } });
   if (!user) return { ok: false as const, status: 404 as const, error: "User not found" };
@@ -144,6 +154,9 @@ export async function updateMyDriverProfile(params: {
       firstName: params.input.firstName ?? undefined,
       lastName: params.input.lastName ?? undefined,
       phone: params.input.phone ?? undefined,
+      ...(params.input.mobilePayBank !== undefined ? { mobilePayBank: params.input.mobilePayBank } : null),
+      ...(params.input.mobilePayDocument !== undefined ? { mobilePayDocument: params.input.mobilePayDocument } : null),
+      ...(params.input.mobilePayPhone !== undefined ? { mobilePayPhone: params.input.mobilePayPhone } : null),
     },
   });
 

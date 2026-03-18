@@ -135,6 +135,25 @@ export function HomeScreen({ navigation }: Props) {
     await Linking.openURL(driverWhatsappLink);
   }
 
+  const driverTelLink = useMemo(() => {
+    if (role !== "USER") return null;
+    const raw = attentionRide?.matchedDriver?.phone;
+    if (!raw) return null;
+    const normalized = String(raw).replace(/[\s\-()]/g, "");
+    if (!normalized) return null;
+    return `tel:${normalized}`;
+  }, [role, attentionRide?.matchedDriver?.phone]);
+
+  async function callDriverDirect() {
+    if (!driverTelLink) return;
+    const ok = await Linking.canOpenURL(driverTelLink);
+    if (!ok) {
+      Alert.alert("No disponible", "No se pudo abrir la app de teléfono en este dispositivo.");
+      return;
+    }
+    await Linking.openURL(driverTelLink);
+  }
+
   async function refreshRide(opts?: { showLoading?: boolean }) {
     if (!token) return;
 
@@ -883,6 +902,13 @@ export function HomeScreen({ navigation }: Props) {
                       <Text style={styles.whatsText}>Hablar con Ejecutivo</Text>
                     </Pressable>
                   ) : null}
+
+                  {driverTelLink && (attentionRide.status === "ASSIGNED" || attentionRide.status === "ACCEPTED" || attentionRide.status === "IN_PROGRESS") ? (
+                    <View style={{ marginTop: 8 }}>
+                      <SecondaryButton label="Llamar directamente al ejecutivo" onPress={() => void callDriverDirect()} />
+                    </View>
+                  ) : null}
+
                   {attentionRide.matchedDriver.phone ? (
                     <Text style={styles.sectionText}>Tel: {attentionRide.matchedDriver.phone}</Text>
                   ) : null}

@@ -85,6 +85,9 @@ export function apiAdminCreateDriver(
     password?: string;
     fullName: string;
     phone: string;
+    mobilePayBank: string;
+    mobilePayDocument: string;
+    mobilePayPhone: string;
     photoUrl: string;
     serviceType: ServiceType;
     vehicle: {
@@ -117,6 +120,9 @@ export function apiAdminUpdateDriver(
     email?: string;
     fullName?: string;
     phone?: string;
+    mobilePayBank?: string | null;
+    mobilePayDocument?: string | null;
+    mobilePayPhone?: string | null;
     photoUrl?: string;
     serviceType?: ServiceType;
     creditChargeFixedCop?: number | null;
@@ -144,6 +150,9 @@ export function apiAdminUpdateDriver(
       email: input.email,
       fullName: input.fullName,
       phone: input.phone,
+      mobilePayBank: input.mobilePayBank,
+      mobilePayDocument: input.mobilePayDocument,
+      mobilePayPhone: input.mobilePayPhone,
       photoUrl: input.photoUrl,
       serviceType: input.serviceType,
       creditChargeFixedCop: input.creditChargeFixedCop,

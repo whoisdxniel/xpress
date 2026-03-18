@@ -17,6 +17,9 @@ export async function createDriverByAdmin(input: {
   password?: string;
   fullName: string;
   phone: string;
+  mobilePayBank: string;
+  mobilePayDocument: string;
+  mobilePayPhone: string;
   photoUrl: string;
   serviceType: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
   vehicle: {
@@ -48,6 +51,9 @@ export async function createDriverByAdmin(input: {
         create: {
           fullName: input.fullName,
           phone: input.phone,
+          mobilePayBank: input.mobilePayBank,
+          mobilePayDocument: input.mobilePayDocument,
+          mobilePayPhone: input.mobilePayPhone,
           photoUrl: input.photoUrl,
           serviceType:
             input.serviceType === "CARRO"
@@ -110,6 +116,9 @@ export async function listDrivers() {
       firstName: true,
       lastName: true,
       phone: true,
+      mobilePayBank: true,
+      mobilePayDocument: true,
+      mobilePayPhone: true,
       photoUrl: true,
       serviceType: true,
       creditChargeFixedCop: true,
@@ -551,6 +560,9 @@ export async function adminUpdateDriver(params: {
   email?: string;
   fullName?: string;
   phone?: string;
+  mobilePayBank?: string | null;
+  mobilePayDocument?: string | null;
+  mobilePayPhone?: string | null;
   photoUrl?: string;
   serviceType?: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
   creditChargeFixedCop?: number | null;
@@ -591,6 +603,9 @@ export async function adminUpdateDriver(params: {
       data: {
         ...(params.fullName ? { fullName: params.fullName } : null),
         ...(params.phone ? { phone: params.phone } : null),
+        ...(params.mobilePayBank !== undefined ? { mobilePayBank: params.mobilePayBank } : null),
+        ...(params.mobilePayDocument !== undefined ? { mobilePayDocument: params.mobilePayDocument } : null),
+        ...(params.mobilePayPhone !== undefined ? { mobilePayPhone: params.mobilePayPhone } : null),
         ...(params.photoUrl ? { photoUrl: params.photoUrl } : null),
         ...(params.serviceType ? { serviceType: params.serviceType as any } : null),
         ...(params.creditChargeFixedCop !== undefined ? { creditChargeFixedCop: params.creditChargeFixedCop } : null),

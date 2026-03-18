@@ -57,6 +57,13 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
     });
   }, [driverPhone, driverName, rideId]);
 
+  const driverTelLink = useMemo(() => {
+    if (!driverPhone) return null;
+    const normalized = String(driverPhone).replace(/[\s\-()]/g, "");
+    if (!normalized) return null;
+    return `tel:${normalized}`;
+  }, [driverPhone]);
+
   async function openOperator() {
     await Linking.openURL(operatorLink);
   }
@@ -64,6 +71,16 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   async function openDriver() {
     if (!driverLink) return;
     await Linking.openURL(driverLink);
+  }
+
+  async function callDriver() {
+    if (!driverTelLink) return;
+    const ok = await Linking.canOpenURL(driverTelLink);
+    if (!ok) {
+      Alert.alert("No disponible", "No se pudo abrir la app de teléfono en este dispositivo.");
+      return;
+    }
+    await Linking.openURL(driverTelLink);
   }
 
   async function cancelRideNow() {
@@ -214,24 +231,45 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
           />
           <SecondaryButton label="Hablar con ZOE" onPress={() => void openOperator()} />
 
+          {driverTelLink ? <SecondaryButton label="Llamar directamente al ejecutivo" onPress={() => void callDriver()} /> : null}
+
           <View style={{ height: 10 }} />
 
-          <Pressable
-            onPress={() => void openDriver()}
-            disabled={!driverLink || driverPhoneLoading}
-            style={({ pressed }) => [
-              styles.execBtn,
-              pressed && !(!driverLink || driverPhoneLoading) ? styles.pressed : null,
-              !driverLink || driverPhoneLoading ? styles.disabled : null,
-            ]}
-          >
-            {driverPhoneLoading ? (
-              <ActivityIndicator color={colors.gold} />
-            ) : (
-              <Ionicons name="car-outline" size={26} color={colors.gold} />
-            )}
-            <Text style={styles.execBtnText}>Hablar con{"\n"}Ejecutivo</Text>
-          </Pressable>
+          <View style={styles.execRow}>
+            <Pressable
+              onPress={() => void openDriver()}
+              disabled={!driverLink || driverPhoneLoading}
+              style={({ pressed }) => [
+                styles.execBtn,
+                pressed && !(!driverLink || driverPhoneLoading) ? styles.pressed : null,
+                !driverLink || driverPhoneLoading ? styles.disabled : null,
+              ]}
+            >
+              {driverPhoneLoading ? (
+                <ActivityIndicator color={colors.gold} />
+              ) : (
+                <Ionicons name="logo-whatsapp" size={28} color={colors.gold} />
+              )}
+              <Text style={styles.execBtnText}>WhatsApp{"\n"}Ejecutivo</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => void callDriver()}
+              disabled={!driverTelLink || driverPhoneLoading}
+              style={({ pressed }) => [
+                styles.execBtn,
+                pressed && !(!driverTelLink || driverPhoneLoading) ? styles.pressed : null,
+                !driverTelLink || driverPhoneLoading ? styles.disabled : null,
+              ]}
+            >
+              {driverPhoneLoading ? (
+                <ActivityIndicator color={colors.gold} />
+              ) : (
+                <Ionicons name="call-outline" size={28} color={colors.gold} />
+              )}
+              <Text style={styles.execBtnText}>Llamar{"\n"}Ejecutivo</Text>
+            </Pressable>
+          </View>
         </Card>
       </ScrollView>
     </Screen>
@@ -312,6 +350,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 6,
     elevation: 2,
+  },
+  execRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    flexWrap: "wrap",
   },
   execBtnText: {
     color: colors.text,

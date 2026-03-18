@@ -94,6 +94,17 @@ export function DriverTechSheetModal(props: { visible: boolean; onClose: () => v
 
                   <Card style={{ marginTop: 12, gap: 12 }}>
                     <View style={styles.sectionTitleRow}>
+                      <Ionicons name="wallet-outline" size={18} color={colors.gold} />
+                      <Text style={styles.sectionTitle}>Pago móvil</Text>
+                    </View>
+
+                    <ReadOnlyField label="Banco" labelIconName="business-outline" value={driver.mobilePayBank ?? ""} emptyText="Sin cargar" />
+                    <ReadOnlyField label="Documento" labelIconName="document-text-outline" value={driver.mobilePayDocument ?? ""} emptyText="Sin cargar" />
+                    <ReadOnlyField label="Teléfono" labelIconName="call-outline" value={driver.mobilePayPhone ?? ""} emptyText="Sin cargar" />
+                  </Card>
+
+                  <Card style={{ marginTop: 12, gap: 12 }}>
+                    <View style={styles.sectionTitleRow}>
                       <Ionicons name="car-sport-outline" size={18} color={colors.gold} />
                       <Text style={styles.sectionTitle}>Vehículo</Text>
                     </View>

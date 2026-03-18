@@ -28,6 +28,9 @@ export function ProfileScreen() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [mobilePayBank, setMobilePayBank] = useState("");
+  const [mobilePayDocument, setMobilePayDocument] = useState("");
+  const [mobilePayPhone, setMobilePayPhone] = useState("");
   const [savedPassword, setSavedPassword] = useState<string | null>(null);
   const [savedPasswordLoading, setSavedPasswordLoading] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -65,6 +68,9 @@ export function ProfileScreen() {
         setFirstName(res.profile.driver.firstName ?? "");
         setLastName(res.profile.driver.lastName ?? "");
         setPhone(res.profile.driver.phone ?? "");
+        setMobilePayBank(res.profile.driver.mobilePayBank ?? "");
+        setMobilePayDocument(res.profile.driver.mobilePayDocument ?? "");
+        setMobilePayPhone(res.profile.driver.mobilePayPhone ?? "");
         setDriverReadonly(res.profile.driver);
       }
 
@@ -164,6 +170,9 @@ export function ProfileScreen() {
           firstName: firstName.trim() || undefined,
           lastName: lastName.trim() || undefined,
           phone: phone.trim() || undefined,
+          mobilePayBank: mobilePayBank.trim() ? mobilePayBank.trim() : null,
+          mobilePayDocument: mobilePayDocument.trim() ? mobilePayDocument.trim() : null,
+          mobilePayPhone: mobilePayPhone.trim() ? mobilePayPhone.trim() : null,
         });
       }
 
@@ -332,6 +341,53 @@ export function ProfileScreen() {
             onPress={() => void onMainButtonPress()}
             disabled={saving}
           />
+
+          {isDriver ? (
+            <View style={{ marginTop: 14, gap: 12 }}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="wallet-outline" size={18} color={colors.gold} />
+                <Text style={styles.sectionTitle}>Pago móvil</Text>
+              </View>
+
+              {isEditing ? (
+                <>
+                  <TextField
+                    label="Banco"
+                    labelIconName="business-outline"
+                    value={mobilePayBank}
+                    onChangeText={setMobilePayBank}
+                    autoCapitalize="words"
+                    editable
+                    placeholder="Ej: Banesco"
+                  />
+                  <TextField
+                    label="Documento"
+                    labelIconName="document-text-outline"
+                    value={mobilePayDocument}
+                    onChangeText={setMobilePayDocument}
+                    autoCapitalize="characters"
+                    editable
+                    placeholder="Ej: V-12345678"
+                  />
+                  <TextField
+                    label="Teléfono"
+                    labelIconName="call-outline"
+                    value={mobilePayPhone}
+                    onChangeText={setMobilePayPhone}
+                    keyboardType="phone-pad"
+                    editable
+                    placeholder="Ej: 0412XXXXXXX"
+                  />
+                </>
+              ) : (
+                <>
+                  <ReadOnlyField label="Banco" labelIconName="business-outline" value={mobilePayBank} emptyText="Sin cargar" />
+                  <ReadOnlyField label="Documento" labelIconName="document-text-outline" value={mobilePayDocument} emptyText="Sin cargar" />
+                  <ReadOnlyField label="Teléfono" labelIconName="call-outline" value={mobilePayPhone} emptyText="Sin cargar" />
+                </>
+              )}
+            </View>
+          ) : null}
 
           {isDriver && driverReadonly ? (
             <View style={{ marginTop: 10, gap: 10 }}>

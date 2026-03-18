@@ -17,6 +17,9 @@ export type MyProfileResponse = {
       firstName: string;
       lastName: string;
       phone: string;
+      mobilePayBank: string | null;
+      mobilePayDocument: string | null;
+      mobilePayPhone: string | null;
       photoUrl: string;
       serviceType: ServiceType;
       vehicle: null | {
@@ -39,7 +42,7 @@ export function apiUpdateMyProfile(
   token: string,
   body:
     | { firstName?: string; lastName?: string; phone?: string; email?: string }
-    | { firstName?: string; lastName?: string; phone?: string }
+    | { firstName?: string; lastName?: string; phone?: string; mobilePayBank?: string | null; mobilePayDocument?: string | null; mobilePayPhone?: string | null }
 ) {
   return apiRequest<{ ok: true } | any>({ method: "PATCH", path: "/profile/me", token, body });
 }

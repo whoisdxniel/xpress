@@ -61,6 +61,10 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
   const [phone, setPhone] = useState("");
   const [serviceType, setServiceType] = useState<ServiceType>("CARRO");
 
+  const [mobilePayBank, setMobilePayBank] = useState("");
+  const [mobilePayDocument, setMobilePayDocument] = useState("");
+  const [mobilePayPhone, setMobilePayPhone] = useState("");
+
   const [photoUrl, setPhotoUrl] = useState("");
 
   const [brand, setBrand] = useState("");
@@ -92,6 +96,9 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
     setEmail(driver.user?.email ?? "");
     setFullName(driver.fullName ?? "");
     setPhone(driver.phone ?? "");
+    setMobilePayBank(driver.mobilePayBank ?? "");
+    setMobilePayDocument(driver.mobilePayDocument ?? "");
+    setMobilePayPhone(driver.mobilePayPhone ?? "");
     setServiceType((driver.serviceType as ServiceType) ?? "CARRO");
     setPhotoUrl(driver.photoUrl ?? "");
 
@@ -252,6 +259,11 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
       return;
     }
 
+    if (!mobilePayBank.trim() || !mobilePayDocument.trim() || !mobilePayPhone.trim()) {
+      Alert.alert("Faltan datos", "Completá Pago móvil (banco, documento y teléfono)");
+      return;
+    }
+
     if (!photoUrl.trim()) {
       Alert.alert("Faltan datos", "Subí la foto del chofer");
       return;
@@ -276,6 +288,9 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
           password: password.trim() ? password.trim() : undefined,
           fullName: fullName.trim(),
           phone: phone.trim(),
+          mobilePayBank: mobilePayBank.trim(),
+          mobilePayDocument: mobilePayDocument.trim(),
+          mobilePayPhone: mobilePayPhone.trim(),
           photoUrl: photoUrl.trim(),
           serviceType,
           vehicle: {
@@ -307,6 +322,9 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
         email: email.trim() || undefined,
         fullName: fullName.trim() || undefined,
         phone: phone.trim() || undefined,
+        mobilePayBank: mobilePayBank.trim() ? mobilePayBank.trim() : null,
+        mobilePayDocument: mobilePayDocument.trim() ? mobilePayDocument.trim() : null,
+        mobilePayPhone: mobilePayPhone.trim() ? mobilePayPhone.trim() : null,
         photoUrl: photoUrl.trim() || undefined,
         serviceType,
         vehicle: {
@@ -456,6 +474,38 @@ export function AdminDriverUpsertScreen({ route, navigation }: Props) {
               </View>
             </View>
           </View>
+        </Card>
+
+        <Card style={{ marginTop: 12, gap: 12 }}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="wallet-outline" size={18} color={colors.gold} />
+            <Text style={styles.sectionTitle}>Pago móvil</Text>
+          </View>
+
+          <TextField
+            label="Banco"
+            labelIconName="business-outline"
+            value={mobilePayBank}
+            onChangeText={setMobilePayBank}
+            autoCapitalize="words"
+            placeholder="Ej: Banesco"
+          />
+          <TextField
+            label="Documento"
+            labelIconName="document-text-outline"
+            value={mobilePayDocument}
+            onChangeText={setMobilePayDocument}
+            autoCapitalize="characters"
+            placeholder="Ej: V-12345678"
+          />
+          <TextField
+            label="Teléfono"
+            labelIconName="call-outline"
+            value={mobilePayPhone}
+            onChangeText={setMobilePayPhone}
+            keyboardType="phone-pad"
+            placeholder="Ej: 0412XXXXXXX"
+          />
         </Card>
 
         <Card style={{ marginTop: 12, gap: 12 }}>

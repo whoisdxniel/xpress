@@ -80,6 +80,10 @@ model DriverProfile {
   firstName    String?
   lastName     String?
   phone        String
+  // Pago móvil (strings tal cual, editable por admin/chofer)
+  mobilePayBank     String?
+  mobilePayDocument String?
+  mobilePayPhone    String?
   photoUrl     String
   serviceType  ServiceType
   homeAddress  String?

@@ -2,72 +2,65 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { Screen } from "../components/Screen";
 import { Card } from "../components/Card";
 import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
-import { apiAdminHardDeleteDriver, apiAdminListDrivers, apiAdminSetDriverActive } from "../admin/admin.api";
-import { serviceTypeLabel } from "../utils/serviceType";
+import { apiAdminDeletePassenger, apiAdminListPassengers, apiAdminSetPassengerActive } from "../admin/admin.api";
 import { absoluteUrl } from "../utils/url";
-import { DriverTechSheetModal } from "../drivers/DriverTechSheetModal";
+import { PassengerTechSheetModal } from "../passengers/PassengerTechSheetModal";
 
-type Props = NativeStackScreenProps<RootStackParamList, "AdminDrivers">;
+type Props = NativeStackScreenProps<RootStackParamList, "AdminPassengers">;
 
-type DriverRow = any;
+type PassengerRow = any;
 
-function formatCop(n: number) {
-  try {
-    return new Intl.NumberFormat("es-CO").format(n);
-  } catch {
-    return String(n);
-  }
-}
-
-export function AdminDriversScreen({ navigation }: Props) {
+export function AdminPassengersScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
 
-  const [drivers, setDrivers] = useState<DriverRow[]>([]);
+  const [passengers, setPassengers] = useState<PassengerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [techOpen, setTechOpen] = useState(false);
-  const [selectedDriver, setSelectedDriver] = useState<DriverRow | null>(null);
 
-  const title = useMemo(() => `Choferes (${drivers.length})`, [drivers.length]);
+  const [techOpen, setTechOpen] = useState(false);
+  const [selectedPassenger, setSelectedPassenger] = useState<PassengerRow | null>(null);
+
+  const title = useMemo(() => `Clientes (${passengers.length})`, [passengers.length]);
 
   async function load() {
     if (!token) return;
     setError(null);
     setLoading(true);
     try {
-      const res = await apiAdminListDrivers(token);
-      setDrivers(res.drivers);
+      const res = await apiAdminListPassengers(token, { take: 80, skip: 0 });
+      setPassengers(res.passengers);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar choferes");
+      setError(e instanceof Error ? e.message : "No se pudo cargar clientes");
     } finally {
       setLoading(false);
     }
   }
 
-  function openTech(d: DriverRow) {
-    setSelectedDriver(d);
+  function openTech(p: PassengerRow) {
+    setSelectedPassenger(p);
     setTechOpen(true);
   }
 
-  async function setActive(driverId: string, nextActive: boolean) {
+  async function setActive(passengerId: string, nextActive: boolean) {
     if (!token) return;
 
-    Alert.alert(nextActive ? "Activar" : "Desactivar", `¿Seguro que querés ${nextActive ? "activar" : "desactivar"} este usuario?`, [
+    Alert.alert(nextActive ? "Activar" : "Desactivar", `¿Seguro que querés ${nextActive ? "activar" : "desactivar"} este cliente?`, [
       { text: "Cancelar", style: "cancel" },
       {
         text: nextActive ? "Activar" : "Desactivar",
         style: nextActive ? "default" : "destructive",
         onPress: async () => {
-          setBusyId(driverId);
+          setBusyId(passengerId);
           try {
-            await apiAdminSetDriverActive(token, { driverId, isActive: nextActive });
+            await apiAdminSetPassengerActive(token, { passengerId, isActive: nextActive });
             await load();
           } catch (e) {
             setError(e instanceof Error ? e.message : "No se pudo actualizar el usuario");
@@ -79,21 +72,21 @@ export function AdminDriversScreen({ navigation }: Props) {
     ]);
   }
 
-  async function deleteDriver(driverId: string) {
+  async function deletePassenger(passengerId: string) {
     if (!token) return;
 
-    Alert.alert("Eliminar chofer", "Esto elimina al chofer y toda su data relacionada. ¿Continuar?", [
+    Alert.alert("Eliminar", "Esto elimina al cliente y toda su data relacionada. ¿Continuar?", [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Eliminar",
         style: "destructive",
         onPress: async () => {
-          setBusyId(driverId);
+          setBusyId(passengerId);
           try {
-            await apiAdminHardDeleteDriver(token, { driverId });
+            await apiAdminDeletePassenger(token, { passengerId });
             await load();
           } catch (e) {
-            setError(e instanceof Error ? e.message : "No se pudo eliminar el chofer");
+            setError(e instanceof Error ? e.message : "No se pudo eliminar");
           } finally {
             setBusyId(null);
           }
@@ -113,36 +106,34 @@ export function AdminDriversScreen({ navigation }: Props) {
 
   return (
     <Screen>
-      <DriverTechSheetModal
+      <PassengerTechSheetModal
         visible={techOpen}
-        driver={selectedDriver}
+        passenger={
+          selectedPassenger
+            ? {
+                fullName: selectedPassenger.fullName,
+                phone: selectedPassenger.phone,
+                email: selectedPassenger.user?.email,
+                photoUrl: selectedPassenger.photoUrl,
+              }
+            : null
+        }
         onClose={() => {
           setTechOpen(false);
-          setSelectedDriver(null);
+          setSelectedPassenger(null);
         }}
       />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Ionicons name="people-outline" size={20} color={colors.gold} />
+            <Ionicons name="person-outline" size={20} color={colors.gold} />
             <Text style={styles.title}>{title}</Text>
           </View>
 
-          <View style={styles.headerRight}>
-            <Pressable
-              onPress={() => navigation.navigate("AdminDriverUpsert")}
-              style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Agregar chofer"
-            >
-              <Ionicons name="add" size={20} color={colors.gold} />
-            </Pressable>
-
-            <Pressable onPress={() => void load()} style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}>
-              <Ionicons name="refresh" size={18} color={colors.gold} />
-            </Pressable>
-          </View>
+          <Pressable onPress={() => void load()} style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}>
+            <Ionicons name="refresh" size={18} color={colors.gold} />
+          </Pressable>
         </View>
 
         {loading ? (
@@ -154,11 +145,13 @@ export function AdminDriversScreen({ navigation }: Props) {
 
         {!!error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {drivers.map((d) => {
-          const isBusy = busyId === d.id;
-          const avatarUri = absoluteUrl(d.photoUrl);
+        {passengers.map((p) => {
+          const isBusy = busyId === p.id;
+          const avatarUri = absoluteUrl(p.photoUrl);
+          const isActive = p.user?.isActive ?? true;
+
           return (
-            <Card key={d.id} style={styles.card}>
+            <Card key={p.id} style={styles.card}>
               <View style={styles.cardTopRow}>
                 <View style={styles.avatar}>
                   {avatarUri ? (
@@ -171,49 +164,42 @@ export function AdminDriversScreen({ navigation }: Props) {
                 </View>
 
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.cardTitle}>{d.fullName || "(sin nombre)"}</Text>
-                  <Text style={styles.line}>Email: {d.user?.email || "—"}</Text>
+                  <Text style={styles.cardTitle}>{p.fullName || "(sin nombre)"}</Text>
+                  <Text style={styles.line}>Email: {p.user?.email || "—"}</Text>
                 </View>
 
                 <Pressable
-                  onPress={() => navigation.navigate("AdminDriverUpsert", { driver: d })}
+                  onPress={() => navigation.navigate("AdminPassengerUpsert", { passenger: p })}
                   style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel="Editar chofer"
+                  accessibilityLabel="Editar cliente"
                 >
                   <Ionicons name="create-outline" size={18} color={colors.gold} />
                 </Pressable>
               </View>
 
-              <Text style={styles.line}>Teléfono: {d.phone || "—"}</Text>
-              <Text style={styles.line}>Servicio: {d.serviceType ? serviceTypeLabel(d.serviceType) : "—"}</Text>
-              <Text style={styles.line}>Estado: {d.status || "—"}</Text>
-              <Text style={styles.line}>Disponible: {d.isAvailable ? "Sí" : "No"}</Text>
-              <Text style={styles.line}>Activo: {d.user?.isActive ? "Sí" : "No"}</Text>
-              <Text style={styles.line}>Créditos (COP): {formatCop(Number(d.user?.creditAccount?.balanceCop ?? 0))}</Text>
-              <Text style={styles.line}>
-                Vehículo: {d.vehicle ? `${d.vehicle.brand} ${d.vehicle.model} ${d.vehicle.plate ? `(${d.vehicle.plate})` : ""}` : "—"}
-              </Text>
+              <Text style={styles.line}>Teléfono: {p.phone || "—"}</Text>
+              <Text style={styles.line}>Activo: {isActive ? "Sí" : "No"}</Text>
 
               <View style={styles.actionsRow}>
                 <Pressable
                   disabled={isBusy}
-                  onPress={() => void setActive(d.id, !d.user?.isActive)}
+                  onPress={() => void setActive(p.id, !isActive)}
                   style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
                 >
                   <Ionicons
-                    name={d.user?.isActive ? "pause-circle-outline" : "play-circle-outline"}
+                    name={isActive ? "pause-circle-outline" : "play-circle-outline"}
                     size={18}
-                    color={d.user?.isActive ? colors.danger : colors.gold}
+                    color={isActive ? colors.danger : colors.gold}
                   />
-                  <Text style={[styles.actionText, d.user?.isActive ? { color: colors.danger } : null]}>
-                    {d.user?.isActive ? "Desactivar" : "Activar"}
+                  <Text style={[styles.actionText, isActive ? { color: colors.danger } : null]}>
+                    {isActive ? "Desactivar" : "Activar"}
                   </Text>
                 </Pressable>
 
                 <Pressable
                   disabled={isBusy}
-                  onPress={() => openTech(d)}
+                  onPress={() => openTech(p)}
                   style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityLabel="Abrir ficha técnica"
@@ -224,10 +210,10 @@ export function AdminDriversScreen({ navigation }: Props) {
 
                 <Pressable
                   disabled={isBusy}
-                  onPress={() => void deleteDriver(d.id)}
+                  onPress={() => void deletePassenger(p.id)}
                   style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel="Eliminar chofer"
+                  accessibilityLabel="Eliminar cliente"
                 >
                   <Ionicons name="trash-outline" size={18} color={colors.danger} />
                   <Text style={[styles.actionText, { color: colors.danger }]}>Eliminar</Text>
@@ -239,7 +225,7 @@ export function AdminDriversScreen({ navigation }: Props) {
           );
         })}
 
-        {!loading && drivers.length === 0 ? <Text style={styles.muted}>No hay choferes.</Text> : null}
+        {!loading && passengers.length === 0 ? <Text style={styles.muted}>No hay clientes.</Text> : null}
       </ScrollView>
     </Screen>
   );
@@ -255,11 +241,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
   },
   headerLeft: {
     flexDirection: "row",
@@ -310,7 +291,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     overflow: "hidden",
-    borderWidth:  1,
+    borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
   },

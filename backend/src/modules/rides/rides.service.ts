@@ -7,7 +7,7 @@ import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifi
 import { chargeDriverCreditsForCompletedRide, ensureDriverHasMinCredits } from "../credits/credits.service";
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
-import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
+import { effectiveBaseFare } from "../config/appConfig.service";
 import { getDrivingRoute, getDrivingTableDistancesMeters } from "../../utils/directions";
 
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
@@ -291,13 +291,12 @@ export async function createRide(params: {
   }
 
   const now = new Date();
-  const appConfig = await getAppConfig();
   const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
-  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? appConfig.nightStartHour);
+  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
-    nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
+    nightBaseFare: pricingNightBaseFare,
     nightStartHour: pricingNightStartHour,
   });
 

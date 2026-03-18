@@ -1305,6 +1305,7 @@ export function HomeScreen({ navigation }: Props) {
           <View style={{ marginTop: 10, gap: 10 }}>
             <PrimaryButton label="Configuración" onPress={() => navigation.navigate("AdminSettings")} />
             <PrimaryButton label="Choferes" onPress={() => navigation.navigate("AdminDrivers")} />
+            <PrimaryButton label="Clientes" onPress={() => navigation.navigate("AdminPassengers")} />
             <SecondaryButton label="Viajes" onPress={() => navigation.navigate("AdminRides")} />
             <SecondaryButton label="Recuperaciones" onPress={() => navigation.navigate("AdminPasswordResets")} />
           </View>

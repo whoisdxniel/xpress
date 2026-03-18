@@ -5,7 +5,7 @@ import { sendPushToAdmins, sendPushToUser } from "../notifications/notifications
 import { getDrivingRoute, getDrivingRouteDistanceMeters } from "../../utils/directions";
 import { calculateFare } from "../../utils/fare";
 import { env } from "../../utils/env";
-import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
+import { effectiveBaseFare } from "../config/appConfig.service";
 import { ensureDriverHasMinCredits } from "../credits/credits.service";
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
@@ -77,13 +77,12 @@ export async function estimateOffer(params: {
     (params.wantsPets ? Number(pricing.petsSurcharge) : 0);
 
   const now = new Date();
-  const appConfig = await getAppConfig();
   const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
-  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? appConfig.nightStartHour);
+  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
-    nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
+    nightBaseFare: pricingNightBaseFare,
     nightStartHour: pricingNightStartHour,
   });
 
@@ -345,14 +344,13 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
 
-  const appConfig = await getAppConfig();
   const now = new Date();
   const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
-  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? appConfig.nightStartHour);
+  const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
-    nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
+    nightBaseFare: pricingNightBaseFare,
     nightStartHour: pricingNightStartHour,
   });
 

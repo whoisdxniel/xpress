@@ -2,6 +2,9 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
+let handlerInstalled = false;
+let foregroundFixInstalled = false;
+
 function isExpoGo() {
   const executionEnvironment = (Constants as any)?.executionEnvironment;
   if (executionEnvironment != null) return executionEnvironment === "storeClient";
@@ -12,14 +15,62 @@ function isExpoGo() {
 }
 
 export function setupNotificationHandlerOnce() {
+  if (handlerInstalled) return;
+  handlerInstalled = true;
+
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async (notification) => {
+      const data: any = (notification.request?.content?.data ?? {}) as any;
+      const soundName = typeof data.soundName === "string" ? data.soundName.trim() : "";
+      const isLocalFix = String(data.__localSoundFix ?? "") === "1";
+
+      // Si viene sonido custom en data y NO es la notificación local que presentamos,
+      // suprimimos el banner/sound del remoto para evitar duplicado.
+      const interceptRemote = !!soundName && !isLocalFix;
+
+      return {
+        shouldShowAlert: !interceptRemote,
+        shouldShowBanner: !interceptRemote,
+        shouldShowList: !interceptRemote,
+        shouldPlaySound: !interceptRemote,
+        shouldSetBadge: false,
+      };
+    },
+  });
+}
+
+export function setupForegroundSoundFixOnce() {
+  if (foregroundFixInstalled) return;
+  foregroundFixInstalled = true;
+
+  Notifications.addNotificationReceivedListener((notification) => {
+    try {
+      const content = notification.request?.content;
+      const data: any = (content?.data ?? {}) as any;
+      if (String(data.__localSoundFix ?? "") === "1") return;
+
+      const soundName = typeof data.soundName === "string" ? data.soundName.trim() : "";
+      if (!soundName) return;
+
+      const channelId = typeof data.channelId === "string" && data.channelId.trim() ? data.channelId.trim() : soundName;
+
+      const nextData: Record<string, any> = { ...data, __localSoundFix: "1" };
+      delete (nextData as any).soundName;
+      delete (nextData as any).channelId;
+
+      void Notifications.scheduleNotificationAsync({
+        content: {
+          title: content?.title ?? "",
+          body: content?.body ?? "",
+          data: nextData,
+          ...(Platform.OS === "android" ? { channelId } : null),
+          ...(Platform.OS === "ios" ? { sound: `${soundName}.mp3` } : null),
+        },
+        trigger: null,
+      });
+    } catch {
+      // silencioso
+    }
   });
 }
 

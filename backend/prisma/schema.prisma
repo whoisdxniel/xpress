@@ -102,10 +102,6 @@ model DriverProfile {
 model AppConfig {
   id String @id @default("global")
 
-  // Tarifa nocturna: si nightBaseFare > 0 y el horario aplica, se usa como tarifa base.
-  nightBaseFare  Decimal @db.Decimal(10, 2) @default(0)
-  nightStartHour Int     @default(20)
-
   // Descuento automático de créditos al chofer al completar el servicio.
   // SERVICE_VALUE: descuenta lo que valga el servicio.
   // FIXED_AMOUNT: descuenta un monto fijo por carrera definido por conductor.
@@ -169,7 +165,7 @@ model PricingConfig {
   id             String      @id @default(cuid())
   serviceType    ServiceType @unique
   baseFare       Decimal     @db.Decimal(10, 2)
-  // Tarifa base nocturna por tipo. Si es 0, se usa AppConfig.nightBaseFare como fallback.
+  // Tarifa base nocturna por tipo. Si es 0, no se aplica tarifa nocturna.
   nightBaseFare  Decimal     @db.Decimal(10, 2) @default(0)
   // Hora desde la cual se aplica la tarifa nocturna (0-23) para este tipo.
   // Si no se configura explícitamente, queda en 20 (fallback histórico).

@@ -53,9 +53,6 @@ export function AdminSettingsScreen({ navigation }: Props) {
   const [pricingIncludedMeters, setPricingIncludedMeters] = useState("0");
   const [pricingStepMeters, setPricingStepMeters] = useState("0");
   const [pricingStepPrice, setPricingStepPrice] = useState("0");
-
-  const [nightBaseFare, setNightBaseFare] = useState("0");
-  const [nightStartHour, setNightStartHour] = useState("20");
   const [driverCreditChargePercent, setDriverCreditChargePercent] = useState("0");
   const [fxCopPerUsd, setFxCopPerUsd] = useState("0");
   const [fxCopPerVes, setFxCopPerVes] = useState("0");
@@ -68,9 +65,6 @@ export function AdminSettingsScreen({ navigation }: Props) {
     setLoading(true);
     try {
       const [cfgRes, pricingRes] = await Promise.all([apiAdminGetAppConfig(token), apiAdminGetPricing(token)]);
-
-      setNightBaseFare(String(cfgRes.appConfig.nightBaseFare ?? 0));
-      setNightStartHour(String(cfgRes.appConfig.nightStartHour ?? 20));
       setDriverCreditChargePercent(String(cfgRes.appConfig.driverCreditChargePercent ?? 0));
       setFxCopPerUsd(String(cfgRes.appConfig.fxCopPerUsd ?? 0));
       setFxCopPerVes(String(cfgRes.appConfig.fxCopPerVes ?? 0));
@@ -114,8 +108,6 @@ export function AdminSettingsScreen({ navigation }: Props) {
     const includedMeters = parseIntSafe(pricingIncludedMeters);
     const stepMeters = parseIntSafe(pricingStepMeters);
     const stepPrice = parseNumber(pricingStepPrice);
-    const nightFare = parseNumber(nightBaseFare);
-    const start = parseIntSafe(nightStartHour);
     const pct = parseNumber(driverCreditChargePercent);
     const fxUsd = parseNumber(fxCopPerUsd);
     const fxVes = parseNumber(fxCopPerVes);
@@ -129,8 +121,6 @@ export function AdminSettingsScreen({ navigation }: Props) {
     if (!Number.isFinite(stepMeters) || stepMeters < 0) return Alert.alert("Validación", "Metros por tramo inválidos");
     if (!Number.isFinite(stepPrice) || stepPrice < 0) return Alert.alert("Validación", "Precio por tramo inválido");
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) return Alert.alert("Validación", "Porcentaje inválido (0-100)");
-    if (!Number.isFinite(nightFare) || nightFare < 0) return Alert.alert("Validación", "Tarifa base nocturna inválida");
-    if (!Number.isFinite(start) || start < 0 || start > 23) return Alert.alert("Validación", "Hora inicio nocturna inválida (0-23)");
     if (!Number.isFinite(fxUsd) || fxUsd < 0) return Alert.alert("Validación", "Tasa COP por USD inválida");
     if (!Number.isFinite(fxVes) || fxVes < 0) return Alert.alert("Validación", "Tasa COP por Bs inválida");
 
@@ -156,8 +146,6 @@ export function AdminSettingsScreen({ navigation }: Props) {
       });
 
       await apiAdminUpdateAppConfig(token, {
-        nightBaseFare: nightFare,
-        nightStartHour: start,
         driverCreditChargePercent: pct,
         driverCreditChargeMode: "SERVICE_VALUE",
         fxCopPerUsd: fxUsd,
@@ -243,7 +231,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
             value={pricingNightBaseFare}
             onChangeText={setPricingNightBaseFare}
             keyboardType="number-pad"
-            placeholder="0 para usar la global"
+            placeholder="0 para desactivar"
           />
 
           <TextField
@@ -281,30 +269,6 @@ export function AdminSettingsScreen({ navigation }: Props) {
           <Text style={styles.muted}>
             Se cobra: base + tramos después de la distancia incluida.
           </Text>
-        </Card>
-
-        <Card style={styles.card}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="moon-outline" size={18} color={colors.gold} />
-            <Text style={styles.sectionTitle}>Nocturno</Text>
-          </View>
-
-          <TextField
-            label="Tarifa base nocturna"
-            value={nightBaseFare}
-            onChangeText={setNightBaseFare}
-            keyboardType="number-pad"
-            placeholder="0 para desactivar"
-          />
-
-          <TextField
-            label="Hora inicio nocturna (0-23)"
-            value={nightStartHour}
-            onChangeText={setNightStartHour}
-            keyboardType="number-pad"
-          />
-
-          <Text style={styles.muted}>Si la tarifa base nocturna es 0, no se aplica tarifa nocturna.</Text>
         </Card>
 
         <Card style={styles.card}>

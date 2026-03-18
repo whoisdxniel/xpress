@@ -17,8 +17,6 @@ async function main() {
       {
         appConfig: {
           id: appConfig.id,
-          nightBaseFare: String(appConfig.nightBaseFare),
-          nightStartHour: appConfig.nightStartHour,
           driverCreditChargeMode: appConfig.driverCreditChargeMode,
         },
         counts: { pricingCount, users, drivers, pushTokens },

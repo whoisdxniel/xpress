@@ -5,6 +5,7 @@ import {
   adminGetAppConfigController,
   adminUpdateAppConfigController,
   adminApproveDriverController,
+  adminHardDeleteDriverController,
   adminCreateDriverController,
   adminAssignRideDriverController,
   adminCreateAddonController,
@@ -17,6 +18,9 @@ import {
   adminListAddonsController,
   adminListDriversController,
   adminListPassengersController,
+  adminSetPassengerActiveController,
+  adminUpdatePassengerController,
+  adminDeletePassengerController,
   adminListRatingsController,
   adminListRidesController,
   adminUpdateAddonController,
@@ -32,12 +36,16 @@ adminRouter.use(requireAuth, requireRole(["ADMIN"]));
 adminRouter.post("/drivers", adminCreateDriverController);
 adminRouter.get("/drivers", adminListDriversController);
 adminRouter.patch("/drivers/:driverId/status", adminApproveDriverController);
+adminRouter.delete("/drivers/:driverId", adminHardDeleteDriverController);
 adminRouter.patch("/drivers/:driverId", adminUpdateDriverController);
 adminRouter.patch("/drivers/:driverId/active", adminSetDriverActiveController);
 adminRouter.get("/drivers/:driverId/credits", adminGetDriverCreditsController);
 adminRouter.patch("/drivers/:driverId/credits", adminAdjustDriverCreditsController);
 
 adminRouter.get("/passengers", adminListPassengersController);
+adminRouter.patch("/passengers/:passengerId", adminUpdatePassengerController);
+adminRouter.patch("/passengers/:passengerId/active", adminSetPassengerActiveController);
+adminRouter.delete("/passengers/:passengerId", adminDeletePassengerController);
 adminRouter.get("/rides", adminListRidesController);
 adminRouter.post("/rides/:rideId/assign-driver", adminAssignRideDriverController);
 adminRouter.get("/ratings", adminListRatingsController);

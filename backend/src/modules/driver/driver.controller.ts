@@ -6,7 +6,7 @@ import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifi
 import { chargeDriverCreditsForCompletedRide } from "../credits/credits.service";
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
-import { effectiveBaseFare, getAppConfig } from "../config/appConfig.service";
+import { effectiveBaseFare } from "../config/appConfig.service";
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
@@ -186,14 +186,13 @@ export async function driverUpdateMeterController(req: Request, res: Response) {
 
   let baseFare = Number(ride.pricingBaseFare ?? 0);
   if (!(Number.isFinite(baseFare) && baseFare > 0)) {
-    const appConfig = await getAppConfig();
     const now = new Date();
     const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
-    const pricingNightStartHour = Number((pricing as any).nightStartHour ?? appConfig.nightStartHour);
+    const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
     baseFare = effectiveBaseFare({
       dayBaseFare: Number(pricing.baseFare),
       now,
-      nightBaseFare: pricingNightBaseFare > 0 ? pricingNightBaseFare : Number(appConfig.nightBaseFare ?? 0),
+      nightBaseFare: pricingNightBaseFare,
       nightStartHour: pricingNightStartHour,
     });
   }

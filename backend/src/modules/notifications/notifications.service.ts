@@ -35,10 +35,18 @@ export async function sendPushToUser(params: {
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
   const channelId = params.channelId?.trim() ? params.channelId.trim() : soundName;
 
+  const data: Record<string, string> | undefined = soundName
+    ? {
+        ...(params.data ?? {}),
+        soundName,
+        ...(channelId ? { channelId } : null),
+      }
+    : params.data;
+
   const res = await messaging.sendEachForMulticast({
     tokens: tokens.map((t) => t.token),
     notification: { title: params.title, body: params.body },
-    data: params.data,
+    data,
     android: {
       priority: "high",
       notification: soundName

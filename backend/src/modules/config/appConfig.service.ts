@@ -5,8 +5,6 @@ export const APP_CONFIG_ID = "global";
 
 export const DEFAULT_APP_CONFIG = {
   id: APP_CONFIG_ID,
-  nightBaseFare: 0,
-  nightStartHour: 20,
   driverCreditChargeMode: DriverCreditChargeMode.SERVICE_VALUE,
   driverCreditChargePercent: 0,
   fxCopPerUsd: 0,

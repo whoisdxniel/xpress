@@ -9,7 +9,9 @@ import {
   UpdatePricingAddonSchema,
   AdjustDriverCreditsSchema,
   SetDriverActiveSchema,
+  SetPassengerActiveSchema,
   UpdateDriverSchema,
+  UpdatePassengerSchema,
 } from "./admin.schemas";
 import {
   approveDriver,
@@ -19,6 +21,10 @@ import {
   adminAdjustDriverCredits,
   adminGetDriverCredits,
   adminSetDriverActive,
+  adminHardDeleteDriver,
+  adminSetPassengerActive,
+  adminUpdatePassenger,
+  adminDeletePassenger,
   adminUpdateDriver,
   createDriverByAdmin,
   createPricingAddon,
@@ -97,6 +103,13 @@ export async function adminApproveDriverController(req: Request, res: Response) 
   return res.status(200).json({ ok: true, driver: updated });
 }
 
+export async function adminHardDeleteDriverController(req: Request, res: Response) {
+  const { driverId } = req.params;
+  const result = await adminHardDeleteDriver({ driverId });
+  if (!result.ok) return res.status(result.status).json({ message: result.error });
+  return res.status(200).json(result);
+}
+
 export async function adminUpsertPricingController(req: Request, res: Response) {
   const serviceType = String(req.params.serviceType);
   const allowed = ["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"] as const;
@@ -127,6 +140,29 @@ export async function adminListPassengersController(req: Request, res: Response)
   const skip = req.query.skip ? Math.max(0, Number(req.query.skip)) : 0;
   const rows = await listPassengers({ skip, take });
   return res.status(200).json({ ok: true, passengers: rows });
+}
+
+export async function adminSetPassengerActiveController(req: Request, res: Response) {
+  const { passengerId } = req.params;
+  const input = SetPassengerActiveSchema.parse(req.body);
+  const result = await adminSetPassengerActive({ passengerId, isActive: input.isActive });
+  if (!result.ok) return res.status(result.status).json({ message: result.error });
+  return res.status(200).json(result);
+}
+
+export async function adminUpdatePassengerController(req: Request, res: Response) {
+  const { passengerId } = req.params;
+  const input = UpdatePassengerSchema.parse(req.body);
+  const result = await adminUpdatePassenger({ passengerId, ...input });
+  if (!result.ok) return res.status(result.status).json({ message: result.error });
+  return res.status(200).json(result);
+}
+
+export async function adminDeletePassengerController(req: Request, res: Response) {
+  const { passengerId } = req.params;
+  const result = await adminDeletePassenger({ passengerId });
+  if (!result.ok) return res.status(result.status).json({ message: result.error });
+  return res.status(200).json(result);
 }
 
 export async function adminListRidesController(req: Request, res: Response) {

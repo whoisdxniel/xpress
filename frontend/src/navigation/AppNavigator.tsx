@@ -21,6 +21,8 @@ import { DriverMapScreen } from "../screens/DriverMapScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { AdminDriversScreen } from "../screens/AdminDriversScreen";
 import { AdminDriverUpsertScreen } from "../screens/AdminDriverUpsertScreen";
+import { AdminPassengersScreen } from "../screens/AdminPassengersScreen";
+import { AdminPassengerUpsertScreen } from "../screens/AdminPassengerUpsertScreen";
 import { AdminPasswordResetsScreen } from "../screens/AdminPasswordResetsScreen";
 import { AdminRidesScreen } from "../screens/AdminRidesScreen";
 import { AdminRideAssignMapScreen } from "../screens/AdminRideAssignMapScreen";
@@ -41,6 +43,8 @@ export type RootStackParamList = {
   Home: undefined;
   AdminDrivers: undefined;
   AdminDriverUpsert: { driver?: any } | undefined;
+  AdminPassengers: undefined;
+  AdminPassengerUpsert: { passenger?: any } | undefined;
   AdminRides: undefined;
   AdminRideAssignMap: { ride: any };
   AdminPasswordResets: undefined;
@@ -146,6 +150,8 @@ export function AppNavigator() {
 
             <Stack.Screen name="AdminDrivers" component={AdminDriversScreen} options={{ title: "" }} />
             <Stack.Screen name="AdminDriverUpsert" component={AdminDriverUpsertScreen} options={{ title: "" }} />
+            <Stack.Screen name="AdminPassengers" component={AdminPassengersScreen} options={{ title: "" }} />
+            <Stack.Screen name="AdminPassengerUpsert" component={AdminPassengerUpsertScreen} options={{ title: "" }} />
             <Stack.Screen name="AdminRides" component={AdminRidesScreen} options={{ title: "" }} />
             <Stack.Screen name="AdminRideAssignMap" component={AdminRideAssignMapScreen} options={{ title: "" }} />
             <Stack.Screen name="AdminPasswordResets" component={AdminPasswordResetsScreen} options={{ title: "" }} />

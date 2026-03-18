@@ -6,7 +6,7 @@ import { setSavedPasswordForUser } from "../lib/credentials";
 import { apiDriverUpsertLocation } from "../driver/driver.api";
 import { preloadCoords } from "../utils/location";
 import { apiRegisterPushToken } from "../notifications/notifications.api";
-import { ensureAndroidChannels, getNativePushToken, setupNotificationHandlerOnce } from "../notifications/push";
+import { ensureAndroidChannels, getNativePushToken, setupForegroundSoundFixOnce, setupNotificationHandlerOnce } from "../notifications/push";
 import { apiGetPublicAppConfig, type PublicAppConfig } from "../config/config.api";
 
 type AuthState = {
@@ -38,6 +38,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   useEffect(() => {
     // Habilita banners + sonido también en foreground.
     setupNotificationHandlerOnce();
+    setupForegroundSoundFixOnce();
   }, []);
 
   useEffect(() => {

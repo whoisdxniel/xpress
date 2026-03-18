@@ -67,6 +67,19 @@ export const SetDriverActiveSchema = z.object({
   isActive: z.coerce.boolean(),
 });
 
+export const SetPassengerActiveSchema = z.object({
+  isActive: z.coerce.boolean(),
+});
+
+export const UpdatePassengerSchema = z.object({
+  email: z.string().email().optional(),
+  fullName: z.string().min(2).optional(),
+  firstName: z.string().min(1).optional().nullable(),
+  lastName: z.string().min(1).optional().nullable(),
+  phone: z.string().min(6).optional(),
+  photoUrl: z.string().min(1).optional().nullable(),
+});
+
 export const UpdateDriverSchema = z.object({
   email: z.string().email().optional(),
   fullName: z.string().min(2).optional(),
@@ -103,10 +116,6 @@ export const UpdateAppConfigSchema = z.object({
   pricingIncludedMeters: z.coerce.number().int().nonnegative().optional(),
   pricingStepMeters: z.coerce.number().int().nonnegative().optional(),
   pricingStepPrice: z.coerce.number().nonnegative().optional(),
-
-  // Noche
-  nightBaseFare: z.coerce.number().nonnegative(),
-  nightStartHour: z.coerce.number().int().min(0).max(23),
 
   // Débito chofer
   driverCreditChargePercent: z.coerce.number().min(0).max(100).optional().default(0),

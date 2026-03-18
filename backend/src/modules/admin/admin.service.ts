@@ -125,6 +125,54 @@ export async function listDrivers() {
   });
 }
 
+export async function adminHardDeleteDriver(params: { driverId: string }) {
+  const driver = await prisma.driverProfile.findUnique({
+    where: { id: params.driverId },
+    select: { id: true, userId: true },
+  });
+  if (!driver) return { ok: false as const, status: 404 as const, error: "Driver not found" };
+
+  await prisma.$transaction(async (tx) => {
+    // Liberar FKs opcionales antes de borrar el driver.
+    await tx.rideRequest.updateMany({
+      where: {
+        matchedDriverId: driver.id,
+        status: { in: ["OPEN", "ASSIGNED", "ACCEPTED", "MATCHED", "IN_PROGRESS"] },
+      },
+      data: {
+        status: "CANCELLED",
+        matchedDriverId: null,
+        matchedAt: null,
+        acceptedAt: null,
+        startedAt: null,
+      },
+    });
+
+    await tx.rideRequest.updateMany({
+      where: {
+        matchedDriverId: driver.id,
+        status: { in: ["CANCELLED", "EXPIRED", "COMPLETED"] },
+      },
+      data: { matchedDriverId: null },
+    });
+
+    await tx.rideOffer.updateMany({
+      where: { committedDriverId: driver.id, status: "COMMITTED" },
+      data: { status: "OPEN", committedDriverId: null, committedAt: null },
+    });
+
+    await tx.rideOffer.updateMany({
+      where: { committedDriverId: driver.id, status: { in: ["OPEN", "CANCELLED", "EXPIRED"] } },
+      data: { committedDriverId: null, committedAt: null },
+    });
+
+    // Borrar el user elimina cascada: driverProfile, location, vehicle, docs, creditAccount, pushTokens, etc.
+    await tx.user.delete({ where: { id: driver.userId } });
+  });
+
+  return { ok: true as const };
+}
+
 export async function listPassengers(params: { skip: number; take: number }) {
   return prisma.passengerProfile.findMany({
     skip: params.skip,
@@ -140,9 +188,111 @@ export async function listPassengers(params: { skip: number; take: number }) {
       photoUrl: true,
       createdAt: true,
       updatedAt: true,
-      user: { select: { id: true, email: true } },
+      user: { select: { id: true, email: true, isActive: true } },
     },
   });
+}
+
+export async function adminSetPassengerActive(params: { passengerId: string; isActive: boolean }) {
+  const passenger = await prisma.passengerProfile.findUnique({
+    where: { id: params.passengerId },
+    select: { id: true, userId: true },
+  });
+  if (!passenger) return { ok: false as const, status: 404 as const, error: "Passenger not found" };
+
+  const user = await prisma.user.update({
+    where: { id: passenger.userId },
+    data: { isActive: params.isActive },
+    select: { id: true, email: true, isActive: true },
+  });
+
+  return { ok: true as const, user };
+}
+
+export async function adminUpdatePassenger(params: {
+  passengerId: string;
+  email?: string;
+  fullName?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string;
+  photoUrl?: string | null;
+}) {
+  const existing = await prisma.passengerProfile.findUnique({
+    where: { id: params.passengerId },
+    select: { id: true, userId: true },
+  });
+  if (!existing) return { ok: false as const, status: 404 as const, error: "Passenger not found" };
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      if (params.email) {
+        await tx.user.update({
+          where: { id: existing.userId },
+          data: { email: params.email },
+        });
+      }
+
+      await tx.passengerProfile.update({
+        where: { id: existing.id },
+        data: {
+          ...(params.fullName ? { fullName: params.fullName } : null),
+          ...(params.firstName !== undefined ? { firstName: params.firstName } : null),
+          ...(params.lastName !== undefined ? { lastName: params.lastName } : null),
+          ...(params.phone ? { phone: params.phone } : null),
+          ...(params.photoUrl !== undefined ? { photoUrl: params.photoUrl } : null),
+        },
+        select: {
+          id: true,
+          userId: true,
+          fullName: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          photoUrl: true,
+          createdAt: true,
+          updatedAt: true,
+          user: { select: { id: true, email: true, isActive: true } },
+        },
+      });
+
+      return tx.passengerProfile.findUnique({
+        where: { id: existing.id },
+        select: {
+          id: true,
+          userId: true,
+          fullName: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          photoUrl: true,
+          createdAt: true,
+          updatedAt: true,
+          user: { select: { id: true, email: true, isActive: true } },
+        },
+      });
+    });
+
+    return { ok: true as const, passenger: updated };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "No se pudo actualizar el pasajero";
+    return { ok: false as const, status: 400 as const, error: message };
+  }
+}
+
+export async function adminDeletePassenger(params: { passengerId: string }) {
+  const passenger = await prisma.passengerProfile.findUnique({
+    where: { id: params.passengerId },
+    select: { id: true, userId: true },
+  });
+  if (!passenger) return { ok: false as const, status: 404 as const, error: "Passenger not found" };
+
+  // Cascadas:
+  // - User -> PassengerProfile (Cascade)
+  // - PassengerProfile -> RideRequest/RideOffer (Cascade)
+  await prisma.user.delete({ where: { id: passenger.userId } });
+
+  return { ok: true as const };
 }
 
 export async function listRides(params: {
@@ -498,8 +648,6 @@ export async function adminGetAppConfig() {
     ok: true as const,
     appConfig: {
       id: appConfig.id,
-      nightBaseFare: Number(appConfig.nightBaseFare ?? 0),
-      nightStartHour: appConfig.nightStartHour,
       driverCreditChargeMode: appConfig.driverCreditChargeMode,
       driverCreditChargePercent: Number((appConfig as any).driverCreditChargePercent ?? 0),
       fxCopPerUsd: Number((appConfig as any).fxCopPerUsd ?? 0),
@@ -521,8 +669,6 @@ export async function adminUpdateAppConfig(input: {
   pricingIncludedMeters?: number;
   pricingStepMeters?: number;
   pricingStepPrice?: number;
-  nightBaseFare: number;
-  nightStartHour: number;
   driverCreditChargePercent?: number;
   driverCreditChargeMode: "SERVICE_VALUE" | "FIXED_AMOUNT";
   fxCopPerUsd?: number;
@@ -555,16 +701,12 @@ export async function adminUpdateAppConfig(input: {
       create: {
         ...DEFAULT_APP_CONFIG,
         id: APP_CONFIG_ID,
-        nightBaseFare: input.nightBaseFare,
-        nightStartHour: input.nightStartHour,
         driverCreditChargeMode: input.driverCreditChargeMode as any,
         driverCreditChargePercent,
         ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
         ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
       },
       update: {
-        nightBaseFare: input.nightBaseFare,
-        nightStartHour: input.nightStartHour,
         driverCreditChargeMode: input.driverCreditChargeMode as any,
         driverCreditChargePercent,
         ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
@@ -608,8 +750,6 @@ export async function adminUpdateAppConfig(input: {
     ok: true as const,
     appConfig: {
       id: updated.id,
-      nightBaseFare: Number(updated.nightBaseFare ?? 0),
-      nightStartHour: updated.nightStartHour,
       driverCreditChargeMode: updated.driverCreditChargeMode,
       driverCreditChargePercent: Number((updated as any).driverCreditChargePercent ?? 0),
       fxCopPerUsd: Number((updated as any).fxCopPerUsd ?? 0),

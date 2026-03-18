@@ -12,6 +12,63 @@ export function apiAdminListDrivers(token: string) {
   });
 }
 
+export function apiAdminListPassengers(token: string, input?: { take?: number; skip?: number }) {
+  const params = new URLSearchParams();
+  if (input?.take) params.set("take", String(input.take));
+  if (input?.skip) params.set("skip", String(input.skip));
+  const qs = params.toString();
+
+  return apiRequest<{ ok: true; passengers: any[] }>({
+    method: "GET",
+    path: `/admin/passengers${qs ? `?${qs}` : ""}`,
+    token,
+  });
+}
+
+export function apiAdminSetPassengerActive(token: string, input: { passengerId: string; isActive: boolean }) {
+  return apiRequest<{ ok: true; user: any }>({
+    method: "PATCH",
+    path: `/admin/passengers/${input.passengerId}/active`,
+    token,
+    body: { isActive: input.isActive },
+  });
+}
+
+export function apiAdminUpdatePassenger(
+  token: string,
+  input: {
+    passengerId: string;
+    email?: string;
+    fullName?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string;
+    photoUrl?: string | null;
+  }
+) {
+  return apiRequest<{ ok: true; passenger: any }>({
+    method: "PATCH",
+    path: `/admin/passengers/${input.passengerId}`,
+    token,
+    body: {
+      email: input.email,
+      fullName: input.fullName,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      phone: input.phone,
+      photoUrl: input.photoUrl,
+    },
+  });
+}
+
+export function apiAdminDeletePassenger(token: string, input: { passengerId: string }) {
+  return apiRequest<{ ok: true }>({
+    method: "DELETE",
+    path: `/admin/passengers/${input.passengerId}`,
+    token,
+  });
+}
+
 export function apiAdminUpdateDriverStatus(token: string, input: { driverId: string; status: AdminDriverStatus }) {
   return apiRequest<{ ok: true; driver: any }>({
     method: "PATCH",
@@ -96,13 +153,19 @@ export function apiAdminUpdateDriver(
   });
 }
 
+export function apiAdminHardDeleteDriver(token: string, input: { driverId: string }) {
+  return apiRequest<{ ok: true }>({
+    method: "DELETE",
+    path: `/admin/drivers/${input.driverId}`,
+    token,
+  });
+}
+
 export function apiAdminGetAppConfig(token: string) {
   return apiRequest<{
     ok: true;
     appConfig: {
       id: string;
-      nightBaseFare: number;
-      nightStartHour: number;
       driverCreditChargeMode: DriverCreditChargeMode;
       driverCreditChargePercent: number;
       fxCopPerUsd: number;
@@ -130,8 +193,6 @@ export function apiAdminUpdateAppConfig(
     pricingIncludedMeters?: number;
     pricingStepMeters?: number;
     pricingStepPrice?: number;
-    nightBaseFare: number;
-    nightStartHour: number;
     driverCreditChargePercent?: number;
     driverCreditChargeMode?: DriverCreditChargeMode;
     fxCopPerUsd?: number;
@@ -139,8 +200,6 @@ export function apiAdminUpdateAppConfig(
   }
 ) {
   const body: any = {
-    nightBaseFare: input.nightBaseFare,
-    nightStartHour: input.nightStartHour,
     driverCreditChargePercent: input.driverCreditChargePercent,
     driverCreditChargeMode: input.driverCreditChargeMode,
     fxCopPerUsd: input.fxCopPerUsd,
@@ -157,8 +216,6 @@ export function apiAdminUpdateAppConfig(
     ok: true;
     appConfig: {
       id: string;
-      nightBaseFare: number;
-      nightStartHour: number;
       driverCreditChargeMode: DriverCreditChargeMode;
       driverCreditChargePercent: number;
       fxCopPerUsd: number;

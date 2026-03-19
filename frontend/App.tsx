@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { enableScreens } from "react-native-screens";
 import MapboxGL from "@rnmapbox/maps";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/auth/AuthContext";
 import { AppNavigator } from "./src/navigation/AppNavigator";
 
@@ -16,9 +17,11 @@ if (mapboxToken && String(mapboxToken).trim()) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <StatusBar style="light" />
-      <AppNavigator />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar style="light" />
+        <AppNavigator />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

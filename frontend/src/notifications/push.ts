@@ -116,9 +116,12 @@ export async function getNativePushToken() {
   const granted = settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
 
   if (!granted) {
-    const req = await Notifications.requestPermissionsAsync({
-      ios: { allowAlert: true, allowSound: true, allowBadge: false },
-    });
+    const req =
+      Platform.OS === "ios"
+        ? await Notifications.requestPermissionsAsync({
+            ios: { allowAlert: true, allowSound: true, allowBadge: false },
+          })
+        : await Notifications.requestPermissionsAsync();
 
     const ok = req.granted || req.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
     if (!ok) return null;

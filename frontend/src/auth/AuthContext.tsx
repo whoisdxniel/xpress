@@ -61,6 +61,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true;
+    let retryTimer: any = null;
 
     (async () => {
       try {
@@ -88,11 +89,37 @@ export function AuthProvider(props: { children: React.ReactNode }) {
       } catch (e) {
         // Best-effort: si falla, la app sigue funcionando, pero dejamos log para debug.
         console.warn("[push] No se pudo registrar push token", e);
+
+        // Reintentos con backoff (red/arranque lento). Evita dejar al usuario sin token.
+        const delays = [2000, 5000, 12000];
+        let attempt = 0;
+
+        const schedule = () => {
+          if (!alive) return;
+          if (attempt >= delays.length) return;
+          const ms = delays[attempt++];
+          retryTimer = setTimeout(async () => {
+            try {
+              const native2 = await getNativePushToken();
+              if (!alive || !native2) return;
+              if (pushRegisteredRef.current?.userId === userId && pushRegisteredRef.current?.token === native2.token) return;
+              await apiRegisterPushToken(token, { token: native2.token, platform: native2.platform });
+              if (!alive) return;
+              pushRegisteredRef.current = { userId, token: native2.token };
+            } catch (e2) {
+              console.warn("[push] Reintento registro push token falló", e2);
+              schedule();
+            }
+          }, ms);
+        };
+
+        schedule();
       }
     })();
 
     return () => {
       alive = false;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [state.token, state.user?.id]);
 

@@ -5,6 +5,11 @@ import { env } from "../utils/env";
 let app: admin.app.App | null = null;
 
 function loadServiceAccount(): object | null {
+  if (env.FCM_SERVICE_ACCOUNT_JSON_B64) {
+    const raw = Buffer.from(env.FCM_SERVICE_ACCOUNT_JSON_B64, "base64").toString("utf-8");
+    return JSON.parse(raw);
+  }
+
   if (env.FCM_SERVICE_ACCOUNT_JSON) {
     return JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON);
   }

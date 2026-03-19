@@ -85,8 +85,9 @@ export function AuthProvider(props: { children: React.ReactNode }) {
         await apiRegisterPushToken(token, { token: native.token, platform: native.platform });
         if (!alive) return;
         pushRegisteredRef.current = { userId, token: native.token };
-      } catch {
-        // silencioso: si falla, la app sigue funcionando
+      } catch (e) {
+        // Best-effort: si falla, la app sigue funcionando, pero dejamos log para debug.
+        console.warn("[push] No se pudo registrar push token", e);
       }
     })();
 

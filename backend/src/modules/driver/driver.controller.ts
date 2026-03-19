@@ -252,18 +252,44 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
     return res.status(400).json({ message: "Ride not in ACCEPTED" });
   }
 
+  const first = await sendPushToUser({
+    userId: ride.passenger.userId,
+    title: "Tu ejecutivo está en el lugar",
+    body: "Tu ejecutivo ya llegó al punto de recogida.",
+    soundName: "uber_llego",
+    channelId: "uber_llego",
+    data: { rideId: ride.id, type: "DRIVER_ARRIVED" },
+  });
+
+  // Si no hay FCM en producción, mejor avisar explícitamente.
+  if (!first.ok && first.reason === "FCM_NOT_CONFIGURED") {
+    return res.status(503).json({
+      ok: false,
+      message: "Notificaciones no configuradas en el servidor (FCM).",
+    });
+  }
+
+  // Si el pasajero no tiene tokens registrados, no se puede notificar.
+  if (first.ok && first.sent === 0) {
+    return res.status(409).json({
+      ok: false,
+      message: "El cliente no tiene notificaciones activas (sin token registrado).",
+    });
+  }
+
+  // Repetición de alerta (solo si el primer push salió).
   sendPushToUserBurst({
     userId: ride.passenger.userId,
     title: "Tu ejecutivo está en el lugar",
     body: "Tu ejecutivo ya llegó al punto de recogida.",
     soundName: "uber_llego",
     channelId: "uber_llego",
-    times: 3,
+    times: 2,
     intervalMs: 1200,
     data: { rideId: ride.id, type: "DRIVER_ARRIVED" },
   });
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ ok: true, push: first });
 }
 
 export async function driverCompleteRideController(req: Request, res: Response) {

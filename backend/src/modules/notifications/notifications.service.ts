@@ -4,6 +4,34 @@ import { getFCMOrNull } from "../../integrations/fcm";
 
 let warnedFcmNotConfigured = false;
 
+const CHANNEL_VERSION_SUFFIX = "_v2";
+
+function channelIdForSound(soundName: string) {
+  return `${soundName}${CHANNEL_VERSION_SUFFIX}`;
+}
+
+function normalizeChannelId(params: { soundName?: string; channelId?: string }) {
+  const soundName = params.soundName?.trim() ? params.soundName.trim() : "";
+  if (!soundName) return undefined;
+
+  const raw = params.channelId?.trim() ? params.channelId.trim() : "";
+  if (!raw) return channelIdForSound(soundName);
+
+  // Si el caller pasa el id antiguo igual al soundName, migramos a v2.
+  if (raw === soundName) return channelIdForSound(soundName);
+
+  // Si ya viene versionado, lo dejamos.
+  if (raw.endsWith(CHANNEL_VERSION_SUFFIX)) return raw;
+
+  // Si es uno de los ids antiguos conocidos, migramos a v2.
+  if (raw === "tienes_servicio") return channelIdForSound("tienes_servicio");
+  if (raw === "aceptar_servicio") return channelIdForSound("aceptar_servicio");
+  if (raw === "uber_llego") return channelIdForSound("uber_llego");
+  if (raw === "disponibles") return channelIdForSound("disponibles");
+
+  return raw;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -41,7 +69,7 @@ export async function sendPushToUser(params: {
   if (tokens.length === 0) return { ok: true as const, sent: 0, failed: 0 };
 
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
-  const channelId = params.channelId?.trim() ? params.channelId.trim() : soundName;
+  const channelId = soundName ? normalizeChannelId({ soundName, channelId: params.channelId }) : undefined;
 
   const data: Record<string, string> | undefined = soundName
     ? {

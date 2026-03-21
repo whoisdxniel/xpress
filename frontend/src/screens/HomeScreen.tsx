@@ -200,13 +200,12 @@ export function HomeScreen({ navigation }: Props) {
 
     if (role === "DRIVER") {
       // Catch-up: el chofer entra y ya tiene un servicio por aceptar.
-      if ((status === "ASSIGNED" || status === "MATCHED") && driverPendingRideNotifiedRef.current !== rideId) {
+      if ((status === "ASSIGNED" || status === "MATCHED" || status === "ACCEPTED") && driverPendingRideNotifiedRef.current !== rideId) {
         driverPendingRideNotifiedRef.current = rideId;
         void notifyCatchup({
           title: "Nuevo servicio",
           body: "Tienes un servicio por aceptar.",
           soundName: "tienes_servicio",
-          channelId: "tienes_servicio",
           data: { rideId, type: "CATCHUP_DRIVER_PENDING" },
         });
       }
@@ -220,7 +219,6 @@ export function HomeScreen({ navigation }: Props) {
           title: "Servicio aceptado",
           body: "Tu chofer aceptó tu servicio.",
           soundName: "aceptar_servicio",
-          channelId: "aceptar_servicio",
           data: { rideId, type: "CATCHUP_RIDE_ACCEPTED" },
         });
       }
@@ -453,7 +451,6 @@ export function HomeScreen({ navigation }: Props) {
         title: "Solicitudes cercanas",
         body: `Tienes ${nearbyRequests.length} solicitudes cerca.`,
         soundName: "disponibles",
-        channelId: "disponibles",
         data: { type: "CATCHUP_NEARBY_REQUESTS", count: String(nearbyRequests.length) },
       });
     }
@@ -472,7 +469,6 @@ export function HomeScreen({ navigation }: Props) {
         title: "Tienes ofertas",
         body: `Tienes ${offersRideCount} ejecutivo(s) ofrecido(s).`,
         soundName: "aceptar_servicio",
-        channelId: "aceptar_servicio",
         data: { type: "CATCHUP_OFFERS", count: String(offersRideCount) },
       });
     }

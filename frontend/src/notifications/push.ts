@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import { channelIdForSound, normalizeChannelId, type SoundName } from "./channels";
 
 let handlerInstalled = false;
 let foregroundFixInstalled = false;
@@ -52,7 +53,8 @@ export function setupForegroundSoundFixOnce() {
       const soundName = typeof data.soundName === "string" ? data.soundName.trim() : "";
       if (!soundName) return;
 
-      const channelId = typeof data.channelId === "string" && data.channelId.trim() ? data.channelId.trim() : soundName;
+      const normalizedSound = soundName as SoundName;
+      const channelId = normalizeChannelId(data.channelId, normalizedSound) || channelIdForSound(normalizedSound);
 
       const nextData: Record<string, any> = { ...data, __localSoundFix: "1" };
       delete (nextData as any).soundName;
@@ -64,7 +66,7 @@ export function setupForegroundSoundFixOnce() {
           body: content?.body ?? "",
           data: nextData,
           ...(Platform.OS === "android" ? { channelId } : null),
-          ...(Platform.OS === "ios" ? { sound: `${soundName}.mp3` } : null),
+          ...(Platform.OS === "ios" ? { sound: `${normalizedSound}.mp3` } : null),
         },
         trigger: null,
       });
@@ -78,28 +80,28 @@ export async function ensureAndroidChannels() {
   if (Platform.OS !== "android") return;
 
   // Canal por sonido, para que FCM pueda elegir canalId.
-  await Notifications.setNotificationChannelAsync("tienes_servicio", {
+  await Notifications.setNotificationChannelAsync(channelIdForSound("tienes_servicio"), {
     name: "Servicios por aceptar",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     sound: "tienes_servicio",
   });
 
-  await Notifications.setNotificationChannelAsync("aceptar_servicio", {
+  await Notifications.setNotificationChannelAsync(channelIdForSound("aceptar_servicio"), {
     name: "Servicio aceptado",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     sound: "aceptar_servicio",
   });
 
-  await Notifications.setNotificationChannelAsync("uber_llego", {
+  await Notifications.setNotificationChannelAsync(channelIdForSound("uber_llego"), {
     name: "Ejecutivo llegó",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     sound: "uber_llego",
   });
 
-  await Notifications.setNotificationChannelAsync("disponibles", {
+  await Notifications.setNotificationChannelAsync(channelIdForSound("disponibles"), {
     name: "Solicitudes cercanas",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],

@@ -19,7 +19,8 @@
     "prisma:studio": "npx prisma studio",
     "prisma:export-sql": "npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > prisma/init.sql",
     "db:clear-rides": "tsx src/scripts/clearRides.ts",
-    "zones:import": "tsx src/scripts/importZones.ts"
+    "zones:import": "tsx src/scripts/importZones.ts",
+    "zones:import:prod": "node scripts/import-zones.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

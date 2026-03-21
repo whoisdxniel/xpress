@@ -8,6 +8,7 @@ import { apiRouter } from "./routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { env } from "./utils/env";
 import { prisma } from "./db/prisma";
+import { ensurePricingConfigsForAllServiceTypes } from "./modules/config/pricingBootstrap";
 
 function redactSensitive(input: string) {
   return input
@@ -17,6 +18,20 @@ function redactSensitive(input: string) {
 
 export function createApp() {
   const app = express();
+
+  // Best-effort bootstrap: evita que tipos *_CARGA queden sin pricing.
+  void (async () => {
+    try {
+      const res = await ensurePricingConfigsForAllServiceTypes();
+      if (res.created > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`[pricing] created missing configs: ${res.created}`);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[pricing] bootstrap failed", e);
+    }
+  })();
 
   app.use(helmet());
   app.use(

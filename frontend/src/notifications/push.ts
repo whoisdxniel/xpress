@@ -1,10 +1,13 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import * as SecureStore from "expo-secure-store";
 import { channelIdForSound, normalizeChannelId, type SoundName } from "./channels";
 
 let handlerInstalled = false;
 let foregroundFixInstalled = false;
+
+const CHANNEL_SOUND_REPAIR_KEY = "xpress_channels_sound_repair_v2";
 
 function isExpoGo() {
   const executionEnvironment = (Constants as any)?.executionEnvironment;
@@ -78,6 +81,41 @@ export function setupForegroundSoundFixOnce() {
 
 export async function ensureAndroidChannels() {
   if (Platform.OS !== "android") return;
+
+  // Android no permite cambiar el sonido de un canal ya creado.
+  // Si el usuario actualiza el APK y los canales quedaron con sonido default,
+  // los borramos una vez y los recreamos con los mp3 en res/raw.
+  try {
+    const repaired = await SecureStore.getItemAsync(CHANNEL_SOUND_REPAIR_KEY);
+    if (repaired !== "1") {
+      const idsToDelete = [
+        // antiguos sin versionar
+        "tienes_servicio",
+        "aceptar_servicio",
+        "uber_llego",
+        "disponibles",
+        // versionados actuales
+        channelIdForSound("tienes_servicio"),
+        channelIdForSound("aceptar_servicio"),
+        channelIdForSound("uber_llego"),
+        channelIdForSound("disponibles"),
+      ];
+
+      await Promise.all(
+        idsToDelete.map(async (id) => {
+          try {
+            await Notifications.deleteNotificationChannelAsync(id);
+          } catch {
+            // best-effort
+          }
+        })
+      );
+
+      await SecureStore.setItemAsync(CHANNEL_SOUND_REPAIR_KEY, "1");
+    }
+  } catch {
+    // best-effort
+  }
 
   // Canal por sonido, para que FCM pueda elegir canalId.
   await Notifications.setNotificationChannelAsync(channelIdForSound("tienes_servicio"), {

@@ -33,6 +33,7 @@ import { rideStatusLabel, roleLabel, userDisplayName } from "../utils/labels";
 import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from "../utils/location";
 import { clearActiveRideOffersRideId, getActiveRideOffersRideId } from "../lib/storage";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
+import { notifyCatchup } from "../notifications/catchup";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -42,6 +43,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 export function HomeScreen({ navigation }: Props) {
   const auth = useAuth();
   const role = auth.user?.role;
+  const userId = auth.user?.id;
 
   const token = auth.token;
   const [attentionRide, setAttentionRide] = useState<any | null>(null);
@@ -70,7 +72,20 @@ export function HomeScreen({ navigation }: Props) {
 
   const offersRideFirstLoadRef = useRef(true);
 
+  const driverPendingRideNotifiedRef = useRef<string | null>(null);
+  const driverNearbyNotifiedRef = useRef(false);
+  const passengerOffersNotifiedRef = useRef(false);
+  const passengerAcceptedNotifiedRideIdRef = useRef<string | null>(null);
+
   const isFocused = useIsFocused();
+
+  useEffect(() => {
+    // Resetea "catch-up" al cambiar de usuario/rol.
+    driverPendingRideNotifiedRef.current = null;
+    driverNearbyNotifiedRef.current = false;
+    passengerOffersNotifiedRef.current = false;
+    passengerAcceptedNotifiedRideIdRef.current = null;
+  }, [userId, role, token]);
 
   const meterIncludedKm = useMemo(() => {
     const raw = process.env.EXPO_PUBLIC_METER_INCLUDED_KM;
@@ -175,6 +190,43 @@ export function HomeScreen({ navigation }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!token) return;
+    if (!attentionRide?.id) return;
+
+    const rideId = String(attentionRide.id);
+    const status = String(attentionRide.status ?? "");
+
+    if (role === "DRIVER") {
+      // Catch-up: el chofer entra y ya tiene un servicio por aceptar.
+      if ((status === "ASSIGNED" || status === "MATCHED") && driverPendingRideNotifiedRef.current !== rideId) {
+        driverPendingRideNotifiedRef.current = rideId;
+        void notifyCatchup({
+          title: "Nuevo servicio",
+          body: "Tienes un servicio por aceptar.",
+          soundName: "tienes_servicio",
+          channelId: "tienes_servicio",
+          data: { rideId, type: "CATCHUP_DRIVER_PENDING" },
+        });
+      }
+    }
+
+    if (role === "USER") {
+      // Catch-up: el cliente entra y el chofer ya aceptó.
+      if (status === "ACCEPTED" && passengerAcceptedNotifiedRideIdRef.current !== rideId) {
+        passengerAcceptedNotifiedRideIdRef.current = rideId;
+        void notifyCatchup({
+          title: "Servicio aceptado",
+          body: "Tu chofer aceptó tu servicio.",
+          soundName: "aceptar_servicio",
+          channelId: "aceptar_servicio",
+          data: { rideId, type: "CATCHUP_RIDE_ACCEPTED" },
+        });
+      }
+    }
+  }, [attentionRide?.id, attentionRide?.status, isFocused, role, token]);
+
   async function ensureDriverCoords() {
     const ok = await ensureForegroundPermission();
     if (!ok) throw new Error("Necesitás habilitar la ubicación para ver servicios solicitados");
@@ -189,30 +241,56 @@ export function HomeScreen({ navigation }: Props) {
     if (role !== "DRIVER") return;
 
     const showLoading = opts?.showLoading ?? true;
-    setNearbyRequestsError(null);
-    if (showLoading) setNearbyRequestsLoading(true);
-
-    setNearbyOffersError(null);
-    if (showLoading) setNearbyOffersLoading(true);
+    if (showLoading) {
+      setNearbyRequestsError(null);
+      setNearbyOffersError(null);
+      setNearbyRequestsLoading(true);
+      setNearbyOffersLoading(true);
+    }
 
     try {
       const coords = await ensureDriverCoords();
       setDriverCoords(coords);
-      await apiDriverUpsertLocation(token, coords);
 
-      const [reqRes, offersRes] = await Promise.all([
+      // Best-effort: si falla ubicación en backend, igual intentamos listar.
+      try {
+        await apiDriverUpsertLocation(token, coords);
+      } catch {
+        // ignore
+      }
+
+      const [reqRes, offersRes] = await Promise.allSettled([
         apiDriverNearbyRideRequests(token, { radiusM: 2000, take: 10 }),
         apiNearbyOffers(token, { lat: coords.lat, lng: coords.lng, radiusM: 2000 }),
       ]);
 
-      setNearbyRequests(reqRes.items ?? []);
-      setNearbyOffers((offersRes.items ?? []) as NearbyOfferItem[]);
+      if (reqRes.status === "fulfilled") {
+        setNearbyRequests(reqRes.value.items ?? []);
+        setNearbyRequestsError(null);
+      } else if (showLoading) {
+        const e = reqRes.reason;
+        setNearbyRequestsError(e instanceof Error ? e.message : "No se pudo cargar servicios solicitados");
+      }
+
+      if (offersRes.status === "fulfilled") {
+        setNearbyOffers((offersRes.value.items ?? []) as NearbyOfferItem[]);
+        setNearbyOffersError(null);
+      } else if (showLoading) {
+        const e = offersRes.reason;
+        setNearbyOffersError(e instanceof Error ? e.message : "No se pudo cargar contraofertas cercanas");
+      }
     } catch (e) {
-      setNearbyRequestsError(e instanceof Error ? e.message : "No se pudo cargar servicios solicitados");
-      setNearbyOffersError(e instanceof Error ? e.message : "No se pudo cargar contraofertas cercanas");
+      // Solo mostrar el error duro en carga inicial. En polling silencioso no asustamos al chofer.
+      if (showLoading) {
+        const msg = e instanceof Error ? e.message : "No se pudo actualizar servicios";
+        setNearbyRequestsError(msg);
+        setNearbyOffersError(msg);
+      }
     } finally {
-      if (showLoading) setNearbyRequestsLoading(false);
-      if (showLoading) setNearbyOffersLoading(false);
+      if (showLoading) {
+        setNearbyRequestsLoading(false);
+        setNearbyOffersLoading(false);
+      }
     }
   }
 
@@ -361,6 +439,44 @@ export function HomeScreen({ navigation }: Props) {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isFocused, role]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!token) return;
+    if (role !== "DRIVER") return;
+    if (driverNearbyNotifiedRef.current) return;
+
+    // Catch-up: entra como chofer y ya hay solicitudes cercanas.
+    if (Array.isArray(nearbyRequests) && nearbyRequests.length > 0) {
+      driverNearbyNotifiedRef.current = true;
+      void notifyCatchup({
+        title: "Solicitudes cercanas",
+        body: `Tienes ${nearbyRequests.length} solicitudes cerca.`,
+        soundName: "disponibles",
+        channelId: "disponibles",
+        data: { type: "CATCHUP_NEARBY_REQUESTS", count: String(nearbyRequests.length) },
+      });
+    }
+  }, [nearbyRequests, isFocused, role, token]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!token) return;
+    if (role !== "USER") return;
+    if (passengerOffersNotifiedRef.current) return;
+
+    // Catch-up: entra como cliente y ya tiene ofertas (ejecutivos ofrecidos).
+    if (offersRideCount > 0) {
+      passengerOffersNotifiedRef.current = true;
+      void notifyCatchup({
+        title: "Tienes ofertas",
+        body: `Tienes ${offersRideCount} ejecutivo(s) ofrecido(s).`,
+        soundName: "aceptar_servicio",
+        channelId: "aceptar_servicio",
+        data: { type: "CATCHUP_OFFERS", count: String(offersRideCount) },
+      });
+    }
+  }, [offersRideCount, isFocused, role, token]);
 
   useEffect(() => {
     const rideId = attentionRide?.id as string | undefined;
@@ -1416,6 +1532,7 @@ export function HomeScreen({ navigation }: Props) {
 
           <View style={{ marginTop: 10, gap: 10 }}>
             <PrimaryButton label="Configuración" onPress={() => navigation.navigate("AdminSettings")} />
+            <PrimaryButton label="Zonas" onPress={() => navigation.navigate("AdminZones")} />
             <PrimaryButton label="Choferes" onPress={() => navigation.navigate("AdminDrivers")} />
             <PrimaryButton label="Clientes" onPress={() => navigation.navigate("AdminPassengers")} />
             <SecondaryButton label="Viajes" onPress={() => navigation.navigate("AdminRides")} />

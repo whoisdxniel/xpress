@@ -27,6 +27,7 @@ import { AdminPasswordResetsScreen } from "../screens/AdminPasswordResetsScreen"
 import { AdminRidesScreen } from "../screens/AdminRidesScreen";
 import { AdminRideAssignMapScreen } from "../screens/AdminRideAssignMapScreen";
 import { AdminSettingsScreen } from "../screens/AdminSettingsScreen";
+import { AdminZonesScreen } from "../screens/AdminZonesScreen";
 import { CreditsScreen } from "../screens/CreditsScreen";
 import { RidesHistoryScreen } from "../screens/RidesHistoryScreen";
 import { RideDetailsScreen } from "../screens/RideDetailsScreen";
@@ -41,6 +42,7 @@ export type RootStackParamList = {
   PasswordResetVerify: { resetRequestId: string; phoneLast3: string };
   PasswordResetConfirm: { resetToken: string };
   Home: undefined;
+  AdminZones: undefined;
   AdminDrivers: undefined;
   AdminDriverUpsert: { driver?: any } | undefined;
   AdminPassengers: undefined;
@@ -156,6 +158,7 @@ export function AppNavigator() {
             <Stack.Screen name="AdminRideAssignMap" component={AdminRideAssignMapScreen} options={{ title: "" }} />
             <Stack.Screen name="AdminPasswordResets" component={AdminPasswordResetsScreen} options={{ title: "" }} />
             <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} options={{ title: "" }} />
+            <Stack.Screen name="AdminZones" component={AdminZonesScreen} options={{ title: "" }} />
 
             <Stack.Screen name="PassengerDriversMap" component={PassengerDriversMapScreen} options={{ title: "" }} />
             <Stack.Screen name="PassengerOffersWait" component={PassengerOffersWaitScreen} options={{ title: "" }} />

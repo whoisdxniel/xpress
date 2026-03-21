@@ -4,6 +4,25 @@ export type AdminDriverStatus = "OBSERVATION" | "APPROVED" | "REJECTED";
 export type ServiceType = "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
 export type DriverCreditChargeMode = "SERVICE_VALUE" | "FIXED_AMOUNT";
 
+export type AdminZone = {
+  id: string;
+  name: string;
+  isHub: boolean;
+  isActive: boolean;
+  geojson: unknown;
+};
+
+export type AdminZoneFixedPriceItem = {
+  id: string;
+  hubZoneId: string;
+  targetZoneId: string;
+  serviceType: ServiceType;
+  amountCop: number;
+  isActive: boolean;
+  hubZone?: { id: string; name: string };
+  targetZone?: { id: string; name: string };
+};
+
 export function apiAdminListDrivers(token: string) {
   return apiRequest<{ ok: true; drivers: any[] }>({
     method: "GET",
@@ -398,5 +417,39 @@ export function apiAdminSendPasswordResetWhatsapp(token: string, input: { resetR
     method: "POST",
     path: `/admin/password-resets/${input.resetRequestId}/send-whatsapp`,
     token,
+  });
+}
+
+export function apiAdminListZones(token: string) {
+  return apiRequest<{ ok: true; zones: AdminZone[] }>({
+    method: "GET",
+    path: "/admin/zones",
+    token,
+  });
+}
+
+export function apiAdminListZoneFixedPrices(token: string) {
+  return apiRequest<{ ok: true; items: AdminZoneFixedPriceItem[] }>({
+    method: "GET",
+    path: "/admin/zones/fixed-prices",
+    token,
+  });
+}
+
+export function apiAdminUpsertZoneFixedPrice(
+  token: string,
+  input: {
+    hubZoneId: string;
+    targetZoneId: string;
+    serviceType: ServiceType;
+    amountCop: number;
+    isActive?: boolean;
+  }
+) {
+  return apiRequest<{ ok: true; item: AdminZoneFixedPriceItem }>({
+    method: "PUT",
+    path: "/admin/zones/fixed-prices",
+    token,
+    body: input,
   });
 }

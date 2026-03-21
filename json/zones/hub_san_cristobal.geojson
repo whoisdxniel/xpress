@@ -860,7 +860,10 @@
     },
     {
       "type": "Feature",
-      "properties": {},
+      "properties": {
+        "name": "corozo",
+        "isHub": "false"
+      },
       "geometry": {
         "coordinates": [
           [

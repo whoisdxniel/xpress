@@ -19,11 +19,6 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerWaiting">;
 
-function getOperatorPhone() {
-  const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-  return (fromEnv && fromEnv.trim()) || "04245687814";
-}
-
 export function PassengerWaitingScreen({ route, navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
@@ -41,7 +36,11 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
 
   const firstLoadRef = useRef(true);
 
-  const operatorPhone = useMemo(() => getOperatorPhone(), []);
+  const operatorPhone = useMemo(() => {
+    const fromConfig = auth.appConfig?.zoeWhatsappPhone;
+    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
+    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+  }, [auth.appConfig?.zoeWhatsappPhone]);
   const operatorLink = useMemo(() => {
     return buildWhatsappLink({
       phone: operatorPhone,

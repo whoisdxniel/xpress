@@ -109,9 +109,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const [zones, setZones] = useState<PublicZone[]>([]);
 
   const operatorPhone = useMemo(() => {
+    const fromConfig = auth.appConfig?.zoeWhatsappPhone;
     const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-    return (fromEnv && fromEnv.trim()) || "04245687814";
-  }, []);
+    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+  }, [auth.appConfig?.zoeWhatsappPhone]);
 
   const operatorLink = useMemo(() => {
     return buildWhatsappLink({

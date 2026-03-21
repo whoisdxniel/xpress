@@ -131,4 +131,17 @@ export const UpdateAppConfigSchema = z.object({
   // Interpretación: COP por 1 unidad.
   fxCopPerUsd: z.coerce.number().nonnegative().optional(),
   fxCopPerVes: z.coerce.number().nonnegative().optional(),
+
+  // WhatsApp operador (ZOE)
+  zoeWhatsappPhone: z.string().max(40).optional().nullable(),
+
+  // Métodos de pago (visible al cliente)
+  paymentBancolombiaHolder: z.string().max(120).optional().nullable(),
+  paymentBancolombiaDocument: z.string().max(80).optional().nullable(),
+  paymentBancolombiaAccountType: z.string().max(40).optional().nullable(),
+  paymentBancolombiaAccountNumber: z.string().max(60).optional().nullable(),
+
+  paymentZelleHolder: z.string().max(120).optional().nullable(),
+  paymentZelleEmail: z.string().max(120).optional().nullable(),
+  paymentZellePhone: z.string().max(40).optional().nullable(),
 });

@@ -9,6 +9,7 @@ import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
 import { Card } from "../components/Card";
 import { GoldTitle } from "../components/GoldTitle";
+import { ReadOnlyField } from "../components/ReadOnlyField";
 import { MiniRouteMap } from "../components/MiniRouteMap";
 import { MiniMeetMap } from "../components/MiniMeetMap";
 import { Ionicons } from "@expo/vector-icons";
@@ -89,10 +90,13 @@ export function HomeScreen({ navigation }: Props) {
   const [meterError, setMeterError] = useState<string | null>(null);
   const [meterPaused, setMeterPaused] = useState(false);
 
+  const [paymentMethod, setPaymentMethod] = useState<"BANCOLOMBIA" | "ZELLE">("BANCOLOMBIA");
+
   const operatorPhone = useMemo(() => {
+    const fromConfig = auth.appConfig?.zoeWhatsappPhone;
     const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-    return (fromEnv && fromEnv.trim()) || "04245687814";
-  }, []);
+    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+  }, [auth.appConfig?.zoeWhatsappPhone]);
 
   const operatorLink = useMemo(() => {
     return buildWhatsappLink({
@@ -1096,6 +1100,60 @@ export function HomeScreen({ navigation }: Props) {
         </Card>
       ) : null}
 
+      {role === "USER" && attentionRide ? (
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="card-outline" size={18} color={colors.gold} />
+            <Text style={styles.sectionTitle}>Métodos de pago</Text>
+          </View>
+
+          <Text style={styles.sectionText}>Elegí tu método para ver los datos.</Text>
+
+          <View style={styles.payToggleRow}>
+            <Pressable
+              onPress={() => setPaymentMethod("BANCOLOMBIA")}
+              style={({ pressed }) => [
+                styles.payToggleBtn,
+                paymentMethod === "BANCOLOMBIA" ? styles.payToggleBtnActive : null,
+                pressed ? styles.pressed : null,
+              ]}
+            >
+              <Text style={[styles.payToggleText, paymentMethod === "BANCOLOMBIA" ? styles.payToggleTextActive : null]}>
+                Bancolombia
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPaymentMethod("ZELLE")}
+              style={({ pressed }) => [
+                styles.payToggleBtn,
+                paymentMethod === "ZELLE" ? styles.payToggleBtnActive : null,
+                pressed ? styles.pressed : null,
+              ]}
+            >
+              <Text style={[styles.payToggleText, paymentMethod === "ZELLE" ? styles.payToggleTextActive : null]}>
+                Zelle
+              </Text>
+            </Pressable>
+          </View>
+
+          {paymentMethod === "BANCOLOMBIA" ? (
+            <View style={{ gap: 10 }}>
+              <ReadOnlyField label="Titular" value={auth.appConfig?.paymentBancolombiaHolder ?? ""} />
+              <ReadOnlyField label="Documento" value={auth.appConfig?.paymentBancolombiaDocument ?? ""} />
+              <ReadOnlyField label="Tipo de cuenta" value={auth.appConfig?.paymentBancolombiaAccountType ?? ""} />
+              <ReadOnlyField label="Número de cuenta" value={auth.appConfig?.paymentBancolombiaAccountNumber ?? ""} />
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              <ReadOnlyField label="Titular" value={auth.appConfig?.paymentZelleHolder ?? ""} />
+              <ReadOnlyField label="Email" value={auth.appConfig?.paymentZelleEmail ?? ""} />
+              <ReadOnlyField label="Teléfono" value={auth.appConfig?.paymentZellePhone ?? ""} emptyText="(opcional)" />
+            </View>
+          )}
+        </Card>
+      ) : null}
+
       {role === "DRIVER" ? (
         <Card style={styles.card}>
           <View style={styles.sectionTitleRow}>
@@ -1459,6 +1517,32 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontSize: 15,
     fontWeight: "900",
+  },
+  payToggleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  payToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: "center",
+  },
+  payToggleBtnActive: {
+    borderColor: colors.gold,
+  },
+  payToggleText: {
+    color: colors.mutedText,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  payToggleTextActive: {
+    color: colors.gold,
   },
   card: { marginTop: 16, gap: 8 },
   title: {

@@ -179,6 +179,17 @@ export function apiAdminGetAppConfig(token: string) {
       driverCreditChargePercent: number;
       fxCopPerUsd: number;
       fxCopPerVes: number;
+
+      zoeWhatsappPhone: string;
+
+      paymentBancolombiaHolder: string;
+      paymentBancolombiaDocument: string;
+      paymentBancolombiaAccountType: string;
+      paymentBancolombiaAccountNumber: string;
+
+      paymentZelleHolder: string;
+      paymentZelleEmail: string;
+      paymentZellePhone: string;
     };
     pricing: {
       baseFare: number;
@@ -206,6 +217,17 @@ export function apiAdminUpdateAppConfig(
     driverCreditChargeMode?: DriverCreditChargeMode;
     fxCopPerUsd?: number;
     fxCopPerVes?: number;
+
+    zoeWhatsappPhone?: string | null;
+
+    paymentBancolombiaHolder?: string | null;
+    paymentBancolombiaDocument?: string | null;
+    paymentBancolombiaAccountType?: string | null;
+    paymentBancolombiaAccountNumber?: string | null;
+
+    paymentZelleHolder?: string | null;
+    paymentZelleEmail?: string | null;
+    paymentZellePhone?: string | null;
   }
 ) {
   const body: any = {
@@ -213,6 +235,17 @@ export function apiAdminUpdateAppConfig(
     driverCreditChargeMode: input.driverCreditChargeMode,
     fxCopPerUsd: input.fxCopPerUsd,
     fxCopPerVes: input.fxCopPerVes,
+
+    zoeWhatsappPhone: input.zoeWhatsappPhone,
+
+    paymentBancolombiaHolder: input.paymentBancolombiaHolder,
+    paymentBancolombiaDocument: input.paymentBancolombiaDocument,
+    paymentBancolombiaAccountType: input.paymentBancolombiaAccountType,
+    paymentBancolombiaAccountNumber: input.paymentBancolombiaAccountNumber,
+
+    paymentZelleHolder: input.paymentZelleHolder,
+    paymentZelleEmail: input.paymentZelleEmail,
+    paymentZellePhone: input.paymentZellePhone,
   };
 
   if (input.pricingBaseFare !== undefined) body.pricingBaseFare = input.pricingBaseFare;
@@ -229,6 +262,17 @@ export function apiAdminUpdateAppConfig(
       driverCreditChargePercent: number;
       fxCopPerUsd: number;
       fxCopPerVes: number;
+
+      zoeWhatsappPhone: string;
+
+      paymentBancolombiaHolder: string;
+      paymentBancolombiaDocument: string;
+      paymentBancolombiaAccountType: string;
+      paymentBancolombiaAccountNumber: string;
+
+      paymentZelleHolder: string;
+      paymentZelleEmail: string;
+      paymentZellePhone: string;
     };
     pricing: {
       baseFare: number;

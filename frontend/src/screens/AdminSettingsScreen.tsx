@@ -57,6 +57,17 @@ export function AdminSettingsScreen({ navigation }: Props) {
   const [fxCopPerUsd, setFxCopPerUsd] = useState("0");
   const [fxCopPerVes, setFxCopPerVes] = useState("0");
 
+  const [zoeWhatsappPhone, setZoeWhatsappPhone] = useState("");
+
+  const [paymentBancolombiaHolder, setPaymentBancolombiaHolder] = useState("");
+  const [paymentBancolombiaDocument, setPaymentBancolombiaDocument] = useState("");
+  const [paymentBancolombiaAccountType, setPaymentBancolombiaAccountType] = useState("");
+  const [paymentBancolombiaAccountNumber, setPaymentBancolombiaAccountNumber] = useState("");
+
+  const [paymentZelleHolder, setPaymentZelleHolder] = useState("");
+  const [paymentZelleEmail, setPaymentZelleEmail] = useState("");
+  const [paymentZellePhone, setPaymentZellePhone] = useState("");
+
   const title = useMemo(() => "Configuración global", []);
 
   async function load() {
@@ -68,6 +79,17 @@ export function AdminSettingsScreen({ navigation }: Props) {
       setDriverCreditChargePercent(String(cfgRes.appConfig.driverCreditChargePercent ?? 0));
       setFxCopPerUsd(String(cfgRes.appConfig.fxCopPerUsd ?? 0));
       setFxCopPerVes(String(cfgRes.appConfig.fxCopPerVes ?? 0));
+
+      setZoeWhatsappPhone(String(cfgRes.appConfig.zoeWhatsappPhone ?? ""));
+
+      setPaymentBancolombiaHolder(String(cfgRes.appConfig.paymentBancolombiaHolder ?? ""));
+      setPaymentBancolombiaDocument(String(cfgRes.appConfig.paymentBancolombiaDocument ?? ""));
+      setPaymentBancolombiaAccountType(String(cfgRes.appConfig.paymentBancolombiaAccountType ?? ""));
+      setPaymentBancolombiaAccountNumber(String(cfgRes.appConfig.paymentBancolombiaAccountNumber ?? ""));
+
+      setPaymentZelleHolder(String(cfgRes.appConfig.paymentZelleHolder ?? ""));
+      setPaymentZelleEmail(String(cfgRes.appConfig.paymentZelleEmail ?? ""));
+      setPaymentZellePhone(String(cfgRes.appConfig.paymentZellePhone ?? ""));
 
       const byType: Record<string, any> = {};
       for (const row of pricingRes.pricing ?? []) {
@@ -150,6 +172,17 @@ export function AdminSettingsScreen({ navigation }: Props) {
         driverCreditChargeMode: "SERVICE_VALUE",
         fxCopPerUsd: fxUsd,
         fxCopPerVes: fxVes,
+
+        zoeWhatsappPhone,
+
+        paymentBancolombiaHolder,
+        paymentBancolombiaDocument,
+        paymentBancolombiaAccountType,
+        paymentBancolombiaAccountNumber,
+
+        paymentZelleHolder,
+        paymentZelleEmail,
+        paymentZellePhone,
       });
       await load();
       Alert.alert("Listo", "Configuración guardada");
@@ -313,6 +346,53 @@ export function AdminSettingsScreen({ navigation }: Props) {
           <Text style={styles.muted}>0 = no descontar. Se aplica al completar el servicio.</Text>
         </Card>
 
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="logo-whatsapp" size={18} color={colors.gold} />
+            <Text style={styles.sectionTitle}>Operador (ZOE)</Text>
+          </View>
+
+          <TextField
+            label="WhatsApp ZOE"
+            value={zoeWhatsappPhone}
+            onChangeText={setZoeWhatsappPhone}
+            placeholder="Ej: +573001112233"
+          />
+          <Text style={styles.helper}>Tip: incluí código de país si aplica.</Text>
+        </Card>
+
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="card-outline" size={18} color={colors.gold} />
+            <Text style={styles.sectionTitle}>Métodos de pago</Text>
+          </View>
+
+          <Text style={styles.helper}>Estos datos los verá el cliente cuando tenga un servicio activo.</Text>
+
+          <Text style={styles.subTitle}>Bancolombia</Text>
+          <TextField label="Titular" value={paymentBancolombiaHolder} onChangeText={setPaymentBancolombiaHolder} placeholder="Nombre" />
+          <TextField label="Documento" value={paymentBancolombiaDocument} onChangeText={setPaymentBancolombiaDocument} placeholder="Cédula/NIT" />
+          <TextField
+            label="Tipo de cuenta"
+            value={paymentBancolombiaAccountType}
+            onChangeText={setPaymentBancolombiaAccountType}
+            placeholder="Ahorros / Corriente"
+          />
+          <TextField
+            label="Número de cuenta"
+            value={paymentBancolombiaAccountNumber}
+            onChangeText={setPaymentBancolombiaAccountNumber}
+            placeholder="1234567890"
+          />
+
+          <View style={{ height: 8 }} />
+
+          <Text style={styles.subTitle}>Zelle</Text>
+          <TextField label="Titular" value={paymentZelleHolder} onChangeText={setPaymentZelleHolder} placeholder="Nombre" />
+          <TextField label="Email" value={paymentZelleEmail} onChangeText={setPaymentZelleEmail} placeholder="correo@ejemplo.com" />
+          <TextField label="Teléfono (opcional)" value={paymentZellePhone} onChangeText={setPaymentZellePhone} placeholder="+1..." />
+        </Card>
+
         <PrimaryButton
           label={savingConfig ? "Guardando..." : "Guardar configuración"}
           iconName="save-outline"
@@ -409,5 +489,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: "900",
+  },
+
+  helper: {
+    color: colors.mutedText,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  subTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 2,
   },
 });

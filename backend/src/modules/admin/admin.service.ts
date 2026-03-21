@@ -659,6 +659,11 @@ export async function adminGetAppConfig() {
 
   const pricing = pricingCarro ?? anyPricing;
 
+  const text = (v: any) => {
+    const s = typeof v === "string" ? v : v == null ? "" : String(v);
+    return s;
+  };
+
   return {
     ok: true as const,
     appConfig: {
@@ -667,6 +672,17 @@ export async function adminGetAppConfig() {
       driverCreditChargePercent: Number((appConfig as any).driverCreditChargePercent ?? 0),
       fxCopPerUsd: Number((appConfig as any).fxCopPerUsd ?? 0),
       fxCopPerVes: Number((appConfig as any).fxCopPerVes ?? 0),
+
+      zoeWhatsappPhone: text((appConfig as any).zoeWhatsappPhone),
+
+      paymentBancolombiaHolder: text((appConfig as any).paymentBancolombiaHolder),
+      paymentBancolombiaDocument: text((appConfig as any).paymentBancolombiaDocument),
+      paymentBancolombiaAccountType: text((appConfig as any).paymentBancolombiaAccountType),
+      paymentBancolombiaAccountNumber: text((appConfig as any).paymentBancolombiaAccountNumber),
+
+      paymentZelleHolder: text((appConfig as any).paymentZelleHolder),
+      paymentZelleEmail: text((appConfig as any).paymentZelleEmail),
+      paymentZellePhone: text((appConfig as any).paymentZellePhone),
     },
     pricing: {
       baseFare: Number(pricing?.baseFare ?? 0),
@@ -688,6 +704,17 @@ export async function adminUpdateAppConfig(input: {
   driverCreditChargeMode: "SERVICE_VALUE" | "FIXED_AMOUNT";
   fxCopPerUsd?: number;
   fxCopPerVes?: number;
+
+  zoeWhatsappPhone?: string | null;
+
+  paymentBancolombiaHolder?: string | null;
+  paymentBancolombiaDocument?: string | null;
+  paymentBancolombiaAccountType?: string | null;
+  paymentBancolombiaAccountNumber?: string | null;
+
+  paymentZelleHolder?: string | null;
+  paymentZelleEmail?: string | null;
+  paymentZellePhone?: string | null;
 }) {
   const serviceTypes: ServiceType[] = [
     ServiceType.CARRO,
@@ -710,6 +737,39 @@ export async function adminUpdateAppConfig(input: {
   const fxCopPerUsd = input.fxCopPerUsd !== undefined ? Math.max(0, Number(input.fxCopPerUsd)) : undefined;
   const fxCopPerVes = input.fxCopPerVes !== undefined ? Math.max(0, Number(input.fxCopPerVes)) : undefined;
 
+  const sanitizeText = (v: any) => {
+    if (v === undefined) return undefined;
+    if (v === null) return null;
+    const s = String(v).trim();
+    return s.length ? s : null;
+  };
+
+  const zoeWhatsappPhone = sanitizeText(input.zoeWhatsappPhone);
+
+  const paymentBancolombiaHolder = sanitizeText(input.paymentBancolombiaHolder);
+  const paymentBancolombiaDocument = sanitizeText(input.paymentBancolombiaDocument);
+  const paymentBancolombiaAccountType = sanitizeText(input.paymentBancolombiaAccountType);
+  const paymentBancolombiaAccountNumber = sanitizeText(input.paymentBancolombiaAccountNumber);
+
+  const paymentZelleHolder = sanitizeText(input.paymentZelleHolder);
+  const paymentZelleEmail = sanitizeText(input.paymentZelleEmail);
+  const paymentZellePhone = sanitizeText(input.paymentZellePhone);
+
+  const extraCreate: any = {
+    ...(zoeWhatsappPhone !== undefined ? { zoeWhatsappPhone } : null),
+
+    ...(paymentBancolombiaHolder !== undefined ? { paymentBancolombiaHolder } : null),
+    ...(paymentBancolombiaDocument !== undefined ? { paymentBancolombiaDocument } : null),
+    ...(paymentBancolombiaAccountType !== undefined ? { paymentBancolombiaAccountType } : null),
+    ...(paymentBancolombiaAccountNumber !== undefined ? { paymentBancolombiaAccountNumber } : null),
+
+    ...(paymentZelleHolder !== undefined ? { paymentZelleHolder } : null),
+    ...(paymentZelleEmail !== undefined ? { paymentZelleEmail } : null),
+    ...(paymentZellePhone !== undefined ? { paymentZellePhone } : null),
+  };
+
+  const extraUpdate: any = extraCreate;
+
   const updated = await prisma.$transaction(async (tx) => {
     const cfg = await tx.appConfig.upsert({
       where: { id: APP_CONFIG_ID },
@@ -720,12 +780,14 @@ export async function adminUpdateAppConfig(input: {
         driverCreditChargePercent,
         ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
         ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
+        ...extraCreate,
       },
       update: {
         driverCreditChargeMode: input.driverCreditChargeMode as any,
         driverCreditChargePercent,
         ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
         ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
+        ...extraUpdate,
       },
     });
 
@@ -761,6 +823,11 @@ export async function adminUpdateAppConfig(input: {
     return cfg;
   });
 
+  const text = (v: any) => {
+    const s = typeof v === "string" ? v : v == null ? "" : String(v);
+    return s;
+  };
+
   return {
     ok: true as const,
     appConfig: {
@@ -769,6 +836,17 @@ export async function adminUpdateAppConfig(input: {
       driverCreditChargePercent: Number((updated as any).driverCreditChargePercent ?? 0),
       fxCopPerUsd: Number((updated as any).fxCopPerUsd ?? 0),
       fxCopPerVes: Number((updated as any).fxCopPerVes ?? 0),
+
+      zoeWhatsappPhone: text((updated as any).zoeWhatsappPhone),
+
+      paymentBancolombiaHolder: text((updated as any).paymentBancolombiaHolder),
+      paymentBancolombiaDocument: text((updated as any).paymentBancolombiaDocument),
+      paymentBancolombiaAccountType: text((updated as any).paymentBancolombiaAccountType),
+      paymentBancolombiaAccountNumber: text((updated as any).paymentBancolombiaAccountNumber),
+
+      paymentZelleHolder: text((updated as any).paymentZelleHolder),
+      paymentZelleEmail: text((updated as any).paymentZelleEmail),
+      paymentZellePhone: text((updated as any).paymentZellePhone),
     },
     pricing: {
       baseFare: Number(input.pricingBaseFare ?? 0),

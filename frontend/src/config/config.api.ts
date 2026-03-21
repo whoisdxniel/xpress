@@ -4,6 +4,17 @@ export type PublicAppConfig = {
   id: string;
   fxCopPerUsd: number;
   fxCopPerVes: number;
+
+  zoeWhatsappPhone: string;
+
+  paymentBancolombiaHolder: string;
+  paymentBancolombiaDocument: string;
+  paymentBancolombiaAccountType: string;
+  paymentBancolombiaAccountNumber: string;
+
+  paymentZelleHolder: string;
+  paymentZelleEmail: string;
+  paymentZellePhone: string;
 };
 
 export type PublicZone = {

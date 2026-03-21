@@ -5,12 +5,28 @@ import { prisma } from "../../db/prisma";
 export async function getPublicAppConfigController(_req: Request, res: Response) {
   const cfg = await getAppConfig();
 
+  const text = (v: any) => {
+    const s = typeof v === "string" ? v : v == null ? "" : String(v);
+    return s;
+  };
+
   return res.json({
     ok: true as const,
     appConfig: {
       id: cfg.id,
       fxCopPerUsd: Number((cfg as any).fxCopPerUsd ?? 0),
       fxCopPerVes: Number((cfg as any).fxCopPerVes ?? 0),
+
+      zoeWhatsappPhone: text((cfg as any).zoeWhatsappPhone),
+
+      paymentBancolombiaHolder: text((cfg as any).paymentBancolombiaHolder),
+      paymentBancolombiaDocument: text((cfg as any).paymentBancolombiaDocument),
+      paymentBancolombiaAccountType: text((cfg as any).paymentBancolombiaAccountType),
+      paymentBancolombiaAccountNumber: text((cfg as any).paymentBancolombiaAccountNumber),
+
+      paymentZelleHolder: text((cfg as any).paymentZelleHolder),
+      paymentZelleEmail: text((cfg as any).paymentZelleEmail),
+      paymentZellePhone: text((cfg as any).paymentZellePhone),
     },
   });
 }

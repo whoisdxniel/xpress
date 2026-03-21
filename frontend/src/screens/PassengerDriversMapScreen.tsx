@@ -23,6 +23,8 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 import { getLastCoords } from "../lib/locationCache";
 import { ensureForegroundPermission, getCurrentCoords, getFastCoords } from "../utils/location";
 import { setActiveRideOffersRideId } from "../lib/storage";
+import { ApiError } from "../lib/api";
+import { apiGetPublicZones, type PublicZone } from "../config/config.api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerDriversMap">;
 
@@ -103,6 +105,8 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     estimatedPrice: number;
     routePath?: { lat: number; lng: number }[] | null;
   } | null>(null);
+
+  const [zones, setZones] = useState<PublicZone[]>([]);
 
   const operatorPhone = useMemo(() => {
     const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
@@ -208,6 +212,22 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     void refreshLocation({ showError: true, animate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await apiGetPublicZones();
+        if (!alive) return;
+        setZones(Array.isArray(res.zones) ? res.zones : []);
+      } catch {
+        // Silencioso: el mapa funciona igual sin overlay.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -322,6 +342,14 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         routePath: Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : null,
       });
     } catch (e) {
+      if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
+        try {
+          await openOperator();
+          return;
+        } catch {
+          // si falla abrir WhatsApp, mostramos mensaje normal
+        }
+      }
       setError(e instanceof Error ? e.message : "No se pudo calcular el aproximado");
     } finally {
       setEstimating(false);
@@ -350,6 +378,14 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
       navigation.replace("PassengerOffersWait", { rideId: created.ride.id });
     } catch (e) {
+      if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
+        try {
+          await openOperator();
+          return;
+        } catch {
+          // fallback a error
+        }
+      }
       setError(e instanceof Error ? e.message : "No se pudo solicitar el ejecutivo");
     } finally {
       setRequesting(false);
@@ -411,6 +447,17 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           const markers: AppMapMarker[] = [];
           markers.push({ id: "me", coordinate: toLatLng(center), pinColor: colors.gold });
 
+          const polygons = zones
+            .filter((z) => z && z.id && z.geojson)
+            .map((z) => ({
+              id: z.id,
+              geojson: z.geojson,
+              // Hub: un poco más marcado
+              fillOpacity: z.isHub ? 0.16 : 0.1,
+              lineOpacity: z.isHub ? 0.7 : 0.45,
+              lineWidth: z.isHub ? 2.5 : 2,
+            }));
+
           if (dropoff) {
             markers.push({
               id: "dropoff",
@@ -450,6 +497,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
               pitchEnabled={false}
               scrollEnabled
               zoomEnabled
+              polygons={polygons}
               onMapReady={() => {
                 mapReadyRef.current = true;
                 const canAutoCenter = !userInteractedRef.current || shouldRecenterRef.current || !hasAutoCenteredRef.current;

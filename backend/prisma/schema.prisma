@@ -245,6 +245,12 @@ model RideRequest {
   pricingTrunkSurcharge Decimal? @db.Decimal(10, 2)
   pricingPetsSurcharge  Decimal? @db.Decimal(10, 2)
 
+  // Precio fijo por zona (ej: San Cristóbal <-> zona externa)
+  isFixedPrice      Boolean     @default(false)
+  fixedPriceCop     Decimal?    @db.Decimal(10, 2)
+  fixedHubZoneId    String?
+  fixedTargetZoneId String?
+
   meterDistanceMeters Int              @default(0)
   meterPrice          Decimal          @default(0) @db.Decimal(10, 2)
   searchRadiusM       Int              @default(2000)
@@ -262,6 +268,8 @@ model RideRequest {
   driverCompletedConfirmedAt    DateTime?
   passenger           PassengerProfile @relation(fields: [passengerId], references: [id], onDelete: Cascade)
   matchedDriver       DriverProfile?   @relation("ride_matched_driver", fields: [matchedDriverId], references: [id])
+  fixedHubZone        Zone?            @relation("ride_fixed_hub_zone", fields: [fixedHubZoneId], references: [id], onDelete: SetNull)
+  fixedTargetZone     Zone?            @relation("ride_fixed_target_zone", fields: [fixedTargetZoneId], references: [id], onDelete: SetNull)
   offer               RideOffer?       @relation("offer_to_ride")
   candidates          RideCandidate[]
   ratings             Rating[]
@@ -270,6 +278,53 @@ model RideRequest {
 
   @@index([passengerId, status])
   @@index([matchedDriverId])
+  @@index([isFixedPrice])
+  @@index([fixedHubZoneId])
+  @@index([fixedTargetZoneId])
+}
+
+model Zone {
+  id       String  @id @default(cuid())
+  name     String
+  isHub    Boolean @default(false)
+  isActive Boolean @default(true)
+
+  // GeoJSON (Polygon/MultiPolygon). Coordenadas: [lng, lat]
+  geojson Json
+
+  // Bounding box para acelerar point-in-polygon
+  minLat Decimal @db.Decimal(10, 7)
+  minLng Decimal @db.Decimal(10, 7)
+  maxLat Decimal @db.Decimal(10, 7)
+  maxLng Decimal @db.Decimal(10, 7)
+
+  hubPrices    ZoneFixedPrice[] @relation("zone_hub")
+  targetPrices ZoneFixedPrice[] @relation("zone_target")
+  fixedHubRides RideRequest[]   @relation("ride_fixed_hub_zone")
+  fixedTargetRides RideRequest[] @relation("ride_fixed_target_zone")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, isHub])
+}
+
+model ZoneFixedPrice {
+  id           String      @id @default(cuid())
+  hubZoneId    String
+  targetZoneId String
+  serviceType  ServiceType
+  amountCop    Decimal     @db.Decimal(10, 2)
+  isActive     Boolean     @default(true)
+
+  hubZone    Zone @relation("zone_hub", fields: [hubZoneId], references: [id], onDelete: Cascade)
+  targetZone Zone @relation("zone_target", fields: [targetZoneId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([hubZoneId, targetZoneId, serviceType])
+  @@index([serviceType, isActive])
 }
 
 model RideCandidate {

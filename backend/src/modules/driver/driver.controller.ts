@@ -206,19 +206,25 @@ export async function driverUpdateMeterController(req: Request, res: Response) {
   const surcharge = (ride.wantsAC ? ac : 0) + (ride.wantsTrunk ? trunk : 0) + (ride.wantsPets ? pets : 0);
   const addonsTotal = (ride.addons ?? []).reduce((sum, a) => sum + Number(a.addon.amount), 0);
 
+  // Si la ride es de precio fijo por zona, el taxímetro no recalcula.
+  const fixedPrice = Number((ride as any).fixedPriceCop ?? 0);
+  const isFixed = !!(ride as any).isFixedPrice && Number.isFinite(fixedPrice) && fixedPrice > 0;
+
   const meterPrice = isAgreed
     ? Math.max(0, Math.round(agreed * 100) / 100)
-    : calculateFare({
-        distanceMeters: input.meterDistanceMeters,
-        baseFare,
-        perKm,
-        includedKm: env.METER_INCLUDED_KM,
-        includedMeters: Number(ride.pricingIncludedMeters ?? (pricing as any).includedMeters ?? 0),
-        stepMeters: Number(ride.pricingStepMeters ?? (pricing as any).stepMeters ?? 0),
-        stepPrice: Number(ride.pricingStepPrice ?? (pricing as any).stepPrice ?? 0),
-        surcharge,
-        addonsTotal,
-      });
+    : isFixed
+      ? Math.max(0, Math.round(fixedPrice * 100) / 100)
+      : calculateFare({
+          distanceMeters: input.meterDistanceMeters,
+          baseFare,
+          perKm,
+          includedKm: env.METER_INCLUDED_KM,
+          includedMeters: Number(ride.pricingIncludedMeters ?? (pricing as any).includedMeters ?? 0),
+          stepMeters: Number(ride.pricingStepMeters ?? (pricing as any).stepMeters ?? 0),
+          stepPrice: Number(ride.pricingStepPrice ?? (pricing as any).stepPrice ?? 0),
+          surcharge,
+          addonsTotal,
+        });
 
   const updated = await prisma.rideRequest.update({
     where: { id: ride.id },

@@ -9,6 +9,7 @@ import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
 import { effectiveBaseFare } from "../config/appConfig.service";
 import { getDrivingRoute, getDrivingTableDistancesMeters } from "../../utils/directions";
+import { getFixedZonePriceForTrip } from "../zones/zones.service";
 
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
 
@@ -271,6 +272,29 @@ export async function createRide(params: {
     };
   }
 
+  // Zonas con precio fijo:
+  // - Dentro de SC (hub) => tarifa normal.
+  // - SC <-> zona => precio fijo.
+  // - Zona <-> zona, o SC <-> fuera sin tarifa => negociar por WhatsApp.
+  const fixed = await getFixedZonePriceForTrip({
+    pickup: { lat: params.pickup.lat, lng: params.pickup.lng },
+    dropoff: { lat: params.dropoff.lat, lng: params.dropoff.lng },
+    serviceType: params.serviceTypeWanted as ServiceType,
+  });
+
+  if (!fixed.ok && fixed.kind !== "IN_HUB") {
+    return {
+      ok: false as const,
+      status: 409 as const,
+      error:
+        fixed.kind === "ZONE_TO_ZONE"
+          ? "Traslados entre zonas externas: se negocia por WhatsApp."
+          : "No hay tarifa fija configurada para este destino. Se negocia por WhatsApp.",
+      code: "NEGOTIATE_WHATSAPP" as const,
+      details: { kind: fixed.kind },
+    };
+  }
+
   const pricingType = pricingServiceTypeFor(params.serviceTypeWanted as ServiceType);
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
@@ -356,7 +380,11 @@ export async function createRide(params: {
       wantsAC: params.wantsAC,
       wantsTrunk: params.wantsTrunk,
       wantsPets: params.wantsPets,
-      estimatedPrice: estimated,
+        estimatedPrice: fixed.ok ? fixed.amountCop : estimated,
+        isFixedPrice: fixed.ok,
+        fixedPriceCop: fixed.ok ? fixed.amountCop : null,
+        fixedHubZoneId: fixed.ok ? fixed.hubZoneId : null,
+        fixedTargetZoneId: fixed.ok ? fixed.targetZoneId : null,
       pricingBaseFare: baseFare,
       pricingPerKm: pricing.perKm,
       pricingIncludedMeters: Number((pricing as any).includedMeters ?? 0),

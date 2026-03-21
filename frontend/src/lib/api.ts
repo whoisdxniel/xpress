@@ -2,25 +2,36 @@ import { getApiBaseUrl } from "./apiBase";
 
 type ApiErrorLike = {
   message?: string;
+  code?: string;
+  details?: unknown;
+  ok?: boolean;
 };
 
 export class ApiError extends Error {
   status: number;
+  data?: ApiErrorLike;
   constructor(message: string, status: number) {
     super(message);
     this.status = status;
   }
+
+  static from(params: { message: string; status: number; data?: ApiErrorLike }) {
+    const err = new ApiError(params.message, params.status);
+    err.data = params.data;
+    return err;
+  }
 }
 
-async function parseErrorMessage(res: Response) {
+async function parseErrorData(res: Response): Promise<{ message: string; data?: ApiErrorLike }> {
   try {
     const data = (await res.json()) as ApiErrorLike;
-    if (data?.message && typeof data.message === "string") return data.message;
+    if (data?.message && typeof data.message === "string") return { message: data.message, data };
+    return { message: res.statusText || "Request failed", data };
   } catch {
     // ignore
   }
 
-  return res.statusText || "Request failed";
+  return { message: res.statusText || "Request failed" };
 }
 
 export async function apiRequest<T>(params: {
@@ -57,8 +68,8 @@ export async function apiRequest<T>(params: {
   }
 
   if (!res.ok) {
-    const message = await parseErrorMessage(res);
-    throw new ApiError(message, res.status);
+    const parsed = await parseErrorData(res);
+    throw ApiError.from({ message: parsed.message, status: res.status, data: parsed.data });
   }
 
   return (await res.json()) as T;

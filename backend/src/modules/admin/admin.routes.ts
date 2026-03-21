@@ -28,6 +28,7 @@ import {
   adminGetPricingController,
 } from "./admin.controller";
 import { passwordResetsAdminRouter } from "./passwordResets.routes";
+import { zonesAdminRouter } from "../zones/zones.admin.routes";
 
 export const adminRouter = Router();
 
@@ -64,3 +65,6 @@ adminRouter.delete("/addons/:addonId", adminDeleteAddonController);
 adminRouter.get("/metrics", adminGetMetricsController);
 
 adminRouter.use(passwordResetsAdminRouter);
+
+// Zonas con precio fijo
+adminRouter.use(zonesAdminRouter);

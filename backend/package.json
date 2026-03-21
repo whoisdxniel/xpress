@@ -18,10 +18,13 @@
     "prisma:deploy": "npx prisma migrate deploy",
     "prisma:studio": "npx prisma studio",
     "prisma:export-sql": "npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > prisma/init.sql",
-    "db:clear-rides": "tsx src/scripts/clearRides.ts"
+    "db:clear-rides": "tsx src/scripts/clearRides.ts",
+    "zones:import": "tsx src/scripts/importZones.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@turf/boolean-point-in-polygon": "^7.2.0",
+    "@turf/helpers": "^7.2.0",
     "@types/multer": "^2.0.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.7.0",

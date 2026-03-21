@@ -29,6 +29,16 @@ export type AppMapPolyline = {
   strokeWidth?: number;
 };
 
+export type AppMapPolygon = {
+  id: string;
+  geojson: unknown;
+  fillColor?: string;
+  fillOpacity?: number;
+  lineColor?: string;
+  lineOpacity?: number;
+  lineWidth?: number;
+};
+
 export type AppMapRef = {
   fitToCoordinates: (coords: LatLng[], opts?: FitToCoordinatesOptions) => void;
   animateToRegion: (region: Region, durationMs?: number) => void;
@@ -47,7 +57,23 @@ type Props = {
   onMapReady?: () => void;
   markers?: AppMapMarker[];
   polyline?: AppMapPolyline | null;
+  polygons?: AppMapPolygon[];
 };
+
+function normalizeGeoJsonToFeature(shape: unknown) {
+  const s: any = shape;
+  if (!s || typeof s !== "object") return null;
+
+  if (s.type === "Feature") return s;
+  if (s.type === "FeatureCollection") return s;
+
+  // Geometry (Polygon/MultiPolygon)
+  if (typeof s.type === "string" && s.coordinates) {
+    return { type: "Feature" as const, geometry: s, properties: {} };
+  }
+
+  return null;
+}
 
 function isFiniteNumber(n: unknown): n is number {
   return typeof n === "number" && Number.isFinite(n);
@@ -199,6 +225,40 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       }}
     >
       <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} />
+
+      {(props.polygons || [])
+        .filter((p) => p && p.id && p.geojson)
+        .map((p) => {
+          const feature = normalizeGeoJsonToFeature(p.geojson);
+          if (!feature) return null;
+
+          const id = String(p.id);
+          const fillColor = p.fillColor ?? colors.gold;
+          const lineColor = p.lineColor ?? colors.gold;
+          const fillOpacity = typeof p.fillOpacity === "number" ? p.fillOpacity : 0.12;
+          const lineOpacity = typeof p.lineOpacity === "number" ? p.lineOpacity : 0.5;
+          const lineWidth = typeof p.lineWidth === "number" ? p.lineWidth : 2;
+
+          return (
+            <MapboxGL.ShapeSource key={id} id={`poly-${id}`} shape={feature as any}>
+              <MapboxGL.FillLayer
+                id={`poly-${id}-fill`}
+                style={{
+                  fillColor,
+                  fillOpacity,
+                }}
+              />
+              <MapboxGL.LineLayer
+                id={`poly-${id}-line`}
+                style={{
+                  lineColor,
+                  lineOpacity,
+                  lineWidth,
+                }}
+              />
+            </MapboxGL.ShapeSource>
+          );
+        })}
 
       {lineShape ? (
         <MapboxGL.ShapeSource id={props.polyline?.id ?? "route"} shape={lineShape as any}>

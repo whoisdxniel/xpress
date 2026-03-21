@@ -7,6 +7,7 @@ import { calculateFare } from "../../utils/fare";
 import { env } from "../../utils/env";
 import { effectiveBaseFare } from "../config/appConfig.service";
 import { ensureDriverHasMinCredits } from "../credits/credits.service";
+import { getFixedZonePriceForTrip } from "../zones/zones.service";
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
@@ -53,6 +54,25 @@ export async function estimateOffer(params: {
   wantsTrunk: boolean;
   wantsPets: boolean;
 }) {
+  const fixed = await getFixedZonePriceForTrip({
+    pickup: { lat: params.pickup.lat, lng: params.pickup.lng },
+    dropoff: { lat: params.dropoff.lat, lng: params.dropoff.lng },
+    serviceType: params.serviceTypeWanted as ServiceType,
+  });
+
+  if (!fixed.ok && fixed.kind !== "IN_HUB") {
+    return {
+      ok: false as const,
+      status: 409 as const,
+      error:
+        fixed.kind === "ZONE_TO_ZONE"
+          ? "Traslados entre zonas externas: se negocia por WhatsApp."
+          : "No hay tarifa fija configurada para este destino. Se negocia por WhatsApp.",
+      code: "NEGOTIATE_WHATSAPP" as const,
+      details: { kind: fixed.kind },
+    };
+  }
+
   const pricingType = pricingServiceTypeFor(params.serviceTypeWanted as ServiceType);
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
@@ -103,7 +123,7 @@ export async function estimateOffer(params: {
     distanceMeters: dist,
     durationSeconds: route?.durationSeconds,
     routePath: route?.path,
-    estimatedPrice: Math.round(estimated * 100) / 100,
+    estimatedPrice: Math.round((fixed.ok ? fixed.amountCop : estimated) * 100) / 100,
     pricing: {
       baseFare,
       perKm: Number(pricing.perKm),

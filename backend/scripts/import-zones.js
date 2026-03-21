@@ -75,21 +75,53 @@ function computeBboxFromGeoJson(geojson) {
   return { minLat, minLng, maxLat, maxLng }
 }
 
-function extractPolygonGeometry(input) {
-  if (!input || typeof input !== 'object') return null
+function extractPolygonGeometries(input) {
+  if (!input || typeof input !== 'object') return []
 
-  if (input.type === 'Polygon' || input.type === 'MultiPolygon') return input
+  if (input.type === 'Polygon' || input.type === 'MultiPolygon') {
+    return [{ geometry: input }]
+  }
 
   if (input.type === 'Feature' && input.geometry) {
     const g = input.geometry
-    if (g && (g.type === 'Polygon' || g.type === 'MultiPolygon')) return g
+    if (g && (g.type === 'Polygon' || g.type === 'MultiPolygon')) {
+      return [{ geometry: g, properties: input.properties }]
+    }
   }
 
   if (input.type === 'FeatureCollection' && Array.isArray(input.features)) {
-    const first = input.features.find((f) => f && f.type === 'Feature' && f.geometry)
-    const g = first && first.geometry
-    if (g && (g.type === 'Polygon' || g.type === 'MultiPolygon')) return g
+    const out = []
+    for (const f of input.features) {
+      if (!f || f.type !== 'Feature' || !f.geometry) continue
+      const g = f.geometry
+      if (g && (g.type === 'Polygon' || g.type === 'MultiPolygon')) {
+        out.push({ geometry: g, properties: f.properties })
+      }
+    }
+    return out
   }
+
+  return []
+}
+
+function parseIsHubFromProperties(properties) {
+  if (!properties || typeof properties !== 'object') return null
+
+  const direct =
+    properties.isHub ??
+    properties.hub ??
+    properties.is_hub
+
+  if (typeof direct === 'boolean') return direct
+  if (typeof direct === 'number') return direct === 1
+  if (typeof direct === 'string') {
+    const v = direct.trim().toLowerCase()
+    if (['true', '1', 'yes', 'y'].includes(v)) return true
+    if (['false', '0', 'no', 'n'].includes(v)) return false
+  }
+
+  const role = properties.role ?? properties.kind ?? properties.type
+  if (typeof role === 'string' && role.trim().toLowerCase() === 'hub') return true
 
   return null
 }
@@ -138,60 +170,67 @@ async function main() {
       continue
     }
 
-    const geo = extractPolygonGeometry(parsed)
-    if (!geo) {
+    const features = extractPolygonGeometries(parsed)
+    if (!features.length) {
       // eslint-disable-next-line no-console
-      console.warn('Saltando (no es Polygon/MultiPolygon):', file)
+      console.warn('Saltando (no hay Polygon/MultiPolygon):', file)
       continue
     }
 
-    const name =
-      (parsed && parsed.properties && parsed.properties.name && String(parsed.properties.name).trim()) ||
-      guessNameFromFilename(file)
+    const fileDefaultHub = /^hub__/i.test(path.basename(file))
+    const baseName = guessNameFromFilename(file)
 
-    const isHub = /^hub__/i.test(path.basename(file))
+    for (let idx = 0; idx < features.length; idx++) {
+      const { geometry, properties } = features[idx]
 
-    let bbox
-    try {
-      bbox = computeBboxFromGeoJson(geo)
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('Saltando (bbox inválido):', file, e && e.message)
-      continue
-    }
+      const propName = properties && properties.name ? String(properties.name).trim() : ''
+      const name = propName || (features.length === 1 ? baseName : `${baseName} ${idx + 1}`)
 
-    const existing = await prisma.zone.findFirst({ where: { name } })
+      const propIsHub = parseIsHubFromProperties(properties)
+      const isHub = propIsHub ?? fileDefaultHub
 
-    if (existing) {
-      await prisma.zone.update({
-        where: { id: existing.id },
-        data: {
-          isHub,
-          isActive: true,
-          geojson: geo,
-          minLat: bbox.minLat,
-          minLng: bbox.minLng,
-          maxLat: bbox.maxLat,
-          maxLng: bbox.maxLng,
-        },
-      })
-      // eslint-disable-next-line no-console
-      console.log('Actualizada zona:', name, isHub ? '(hub)' : '')
-    } else {
-      await prisma.zone.create({
-        data: {
-          name,
-          isHub,
-          isActive: true,
-          geojson: geo,
-          minLat: bbox.minLat,
-          minLng: bbox.minLng,
-          maxLat: bbox.maxLat,
-          maxLng: bbox.maxLng,
-        },
-      })
-      // eslint-disable-next-line no-console
-      console.log('Creada zona:', name, isHub ? '(hub)' : '')
+      let bbox
+      try {
+        bbox = computeBboxFromGeoJson(geometry)
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Saltando (bbox inválido):', file, name, e && e.message)
+        continue
+      }
+
+      const existing = await prisma.zone.findFirst({ where: { name } })
+
+      if (existing) {
+        await prisma.zone.update({
+          where: { id: existing.id },
+          data: {
+            isHub,
+            isActive: true,
+            geojson: geometry,
+            minLat: bbox.minLat,
+            minLng: bbox.minLng,
+            maxLat: bbox.maxLat,
+            maxLng: bbox.maxLng,
+          },
+        })
+        // eslint-disable-next-line no-console
+        console.log('Actualizada zona:', name, isHub ? '(hub)' : '')
+      } else {
+        await prisma.zone.create({
+          data: {
+            name,
+            isHub,
+            isActive: true,
+            geojson: geometry,
+            minLat: bbox.minLat,
+            minLng: bbox.minLng,
+            maxLat: bbox.maxLat,
+            maxLng: bbox.maxLng,
+          },
+        })
+        // eslint-disable-next-line no-console
+        console.log('Creada zona:', name, isHub ? '(hub)' : '')
+      }
     }
   }
 

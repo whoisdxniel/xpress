@@ -250,6 +250,7 @@ export async function getFixedZonePriceForTrip(params: {
 > {
   const rawZones = await prisma.zone.findMany({
     where: { isActive: true },
+    orderBy: [{ isHub: "desc" }, { name: "asc" }],
     select: {
       id: true,
       name: true,

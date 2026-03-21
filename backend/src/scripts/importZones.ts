@@ -12,21 +12,50 @@ function usageAndExit() {
   process.exit(1);
 }
 
-function extractPolygonGeometry(input: any) {
-  if (!input || typeof input !== "object") return null;
+type ImportFeature = { geometry: any; properties?: any };
 
-  if (input.type === "Polygon" || input.type === "MultiPolygon") return input;
+function extractPolygonGeometries(input: any): ImportFeature[] {
+  if (!input || typeof input !== "object") return [];
+
+  if (input.type === "Polygon" || input.type === "MultiPolygon") {
+    return [{ geometry: input }];
+  }
 
   if (input.type === "Feature" && input.geometry) {
     const g = input.geometry;
-    if (g?.type === "Polygon" || g?.type === "MultiPolygon") return g;
+    if (g?.type === "Polygon" || g?.type === "MultiPolygon") {
+      return [{ geometry: g, properties: input.properties }];
+    }
   }
 
   if (input.type === "FeatureCollection" && Array.isArray(input.features)) {
-    const first = input.features.find((f: any) => f && f.type === "Feature" && f.geometry);
-    const g = first?.geometry;
-    if (g?.type === "Polygon" || g?.type === "MultiPolygon") return g;
+    const out: ImportFeature[] = [];
+    for (const f of input.features) {
+      if (!f || f.type !== "Feature" || !f.geometry) continue;
+      const g = f.geometry;
+      if (g?.type === "Polygon" || g?.type === "MultiPolygon") {
+        out.push({ geometry: g, properties: f.properties });
+      }
+    }
+    return out;
   }
+
+  return [];
+}
+
+function parseIsHubFromProperties(properties: any): boolean | null {
+  if (!properties || typeof properties !== "object") return null;
+  const direct = properties.isHub ?? properties.hub ?? properties.is_hub;
+  if (typeof direct === "boolean") return direct;
+  if (typeof direct === "number") return direct === 1;
+  if (typeof direct === "string") {
+    const v = direct.trim().toLowerCase();
+    if (["true", "1", "yes", "y"].includes(v)) return true;
+    if (["false", "0", "no", "n"].includes(v)) return false;
+  }
+
+  const role = properties.role ?? properties.kind ?? properties.type;
+  if (typeof role === "string" && role.trim().toLowerCase() === "hub") return true;
 
   return null;
 }
@@ -69,57 +98,67 @@ async function main() {
       continue;
     }
 
-    const geo = extractPolygonGeometry(parsed);
-    if (!geo) {
+    const features = extractPolygonGeometries(parsed);
+    if (!features.length) {
       // eslint-disable-next-line no-console
-      console.warn("Saltando (no es Polygon/MultiPolygon):", file);
+      console.warn("Saltando (no hay Polygon/MultiPolygon):", file);
       continue;
     }
 
-    const name = (parsed?.properties?.name && String(parsed.properties.name).trim()) || guessNameFromFilename(file);
-    const isHub = /^hub__/i.test(path.basename(file));
+    const fileDefaultHub = /^hub__/i.test(path.basename(file));
+    const baseName = guessNameFromFilename(file);
 
-    let bbox;
-    try {
-      bbox = computeBboxFromGeoJson(geo);
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn("Saltando (bbox inválido):", file, e?.message);
-      continue;
-    }
+    for (let idx = 0; idx < features.length; idx++) {
+      const { geometry, properties } = features[idx];
 
-    const existing = await prisma.zone.findFirst({ where: { name } });
+      const propName = properties?.name ? String(properties.name).trim() : "";
+      const name = propName || (features.length === 1 ? baseName : `${baseName} ${idx + 1}`);
 
-    if (existing) {
-      await prisma.zone.update({
-        where: { id: existing.id },
-        data: {
-          isHub,
-          isActive: true,
-          geojson: geo,
-          minLat: bbox.minLat,
-          minLng: bbox.minLng,
-          maxLat: bbox.maxLat,
-          maxLng: bbox.maxLng,
-        },
-      });
-      // eslint-disable-next-line no-console
-      console.log("Actualizada zona:", name, isHub ? "(hub)" : "");
-    } else {
-      await prisma.zone.create({
-        data: {
-          name,
-          isHub,
-          isActive: true,
-          geojson: geo,
-          minLat: bbox.minLat,
-          minLng: bbox.minLng,
-          maxLat: bbox.maxLat,
-          maxLng: bbox.maxLng,
-        },
-      });
-      // eslint-disable-next-line no-console
-      console.log("Creada zona:", name, isHub ? "(hub)" : "");
+      const propIsHub = parseIsHubFromProperties(properties);
+      const isHub = propIsHub ?? fileDefaultHub;
+
+      let bbox;
+      try {
+        bbox = computeBboxFromGeoJson(geometry);
+      } catch (e: any) {
+        // eslint-disable-next-line no-console
+        console.warn("Saltando (bbox inválido):", file, name, e?.message);
+        continue;
+      }
+
+      const existing = await prisma.zone.findFirst({ where: { name } });
+
+      if (existing) {
+        await prisma.zone.update({
+          where: { id: existing.id },
+          data: {
+            isHub,
+            isActive: true,
+            geojson: geometry,
+            minLat: bbox.minLat,
+            minLng: bbox.minLng,
+            maxLat: bbox.maxLat,
+            maxLng: bbox.maxLng,
+          },
+        });
+        // eslint-disable-next-line no-console
+        console.log("Actualizada zona:", name, isHub ? "(hub)" : "");
+      } else {
+        await prisma.zone.create({
+          data: {
+            name,
+            isHub,
+            isActive: true,
+            geojson: geometry,
+            minLat: bbox.minLat,
+            minLng: bbox.minLng,
+            maxLat: bbox.maxLat,
+            maxLng: bbox.maxLng,
+          },
+        });
+        // eslint-disable-next-line no-console
+        console.log("Creada zona:", name, isHub ? "(hub)" : "");
+      }
     }
   }
 

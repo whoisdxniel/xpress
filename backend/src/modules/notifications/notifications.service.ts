@@ -35,6 +35,28 @@ function normalizeChannelId(params: { soundName?: string; channelId?: string }) 
   return raw;
 }
 
+function normalizeAnyChannelId(channelIdRaw?: string) {
+  const raw = channelIdRaw?.trim() ? channelIdRaw.trim() : "";
+  if (!raw) return "";
+
+  // Si ya viene versionado v3, lo dejamos.
+  if (raw.endsWith(CHANNEL_VERSION_SUFFIX)) return raw;
+
+  // Si viene de v2, migramos a v3.
+  if (raw.endsWith("_v2")) {
+    const base = raw.slice(0, -3); // quita _v2
+    return `${base}${CHANNEL_VERSION_SUFFIX}`;
+  }
+
+  // Mapeo de ids legacy conocidos.
+  if (raw === "tienes_servicio") return channelIdForSound("tienes_servicio");
+  if (raw === "aceptar_servicio") return channelIdForSound("aceptar_servicio");
+  if (raw === "uber_llego") return channelIdForSound("uber_llego");
+  if (raw === "disponibles") return channelIdForSound("disponibles");
+
+  return raw;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -73,6 +95,7 @@ export async function sendPushToUser(params: {
 
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
   const channelId = soundName ? normalizeChannelId({ soundName, channelId: params.channelId }) : undefined;
+  const androidChannelId = channelId || normalizeAnyChannelId(params.channelId) || channelIdForSound("disponibles");
 
   const data: Record<string, string> | undefined = soundName
     ? {
@@ -88,12 +111,10 @@ export async function sendPushToUser(params: {
     data,
     android: {
       priority: "high",
-      notification: soundName
-        ? {
-            sound: soundName,
-            channelId: channelId,
-          }
-        : undefined,
+      notification: {
+        channelId: androidChannelId,
+        ...(soundName ? { sound: soundName } : null),
+      },
     },
     apns: soundName
       ? {

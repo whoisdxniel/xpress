@@ -667,6 +667,11 @@ export async function listNearbyRideRequestsForDriver(params: { userId: string; 
           address: r.dropoffAddress ?? undefined,
         },
         estimatedPrice: Number(r.estimatedPrice),
+        isFixedPrice: Boolean((r as any).isFixedPrice),
+        fixedPriceCop:
+          (r as any).fixedPriceCop != null && Number.isFinite(Number((r as any).fixedPriceCop))
+            ? Number((r as any).fixedPriceCop)
+            : null,
         createdAt: r.createdAt,
         passenger: {
           fullName: r.passenger.fullName,

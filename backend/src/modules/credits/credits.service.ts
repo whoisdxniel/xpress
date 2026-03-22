@@ -90,10 +90,20 @@ export async function ensureDriverHasMinCredits(params: {
 }
 
 function rideFinalAmountCop(ride: {
+  isFixedPrice?: any;
+  fixedPriceCop?: any;
   meterPrice: any;
   agreedPrice: any;
   estimatedPrice: any;
 }) {
+  const isFixed = Boolean(ride.isFixedPrice);
+  if (isFixed) {
+    const fixed = Number(ride.fixedPriceCop ?? 0);
+    const estimated = Number(ride.estimatedPrice ?? 0);
+    const value = fixed > 0 ? fixed : estimated;
+    return Math.max(0, Math.round(Number.isFinite(value) ? value : 0));
+  }
+
   const meter = Number(ride.meterPrice ?? 0);
   const agreed = Number(ride.agreedPrice ?? 0);
   const estimated = Number(ride.estimatedPrice ?? 0);
@@ -110,6 +120,8 @@ export async function chargeDriverCreditsForCompletedRide(params: { rideId: stri
     select: {
       id: true,
       status: true,
+      isFixedPrice: true,
+      fixedPriceCop: true,
       meterPrice: true,
       agreedPrice: true,
       estimatedPrice: true,

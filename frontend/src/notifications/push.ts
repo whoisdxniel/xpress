@@ -7,7 +7,7 @@ import { channelIdForSound, normalizeChannelId, type SoundName } from "./channel
 let handlerInstalled = false;
 let foregroundFixInstalled = false;
 
-const CHANNEL_SOUND_REPAIR_KEY = "xpress_channels_sound_repair_v2";
+const CHANNEL_SOUND_REPAIR_KEY = "xpress_channels_sound_repair_v3";
 
 function isExpoGo() {
   const executionEnvironment = (Constants as any)?.executionEnvironment;
@@ -122,6 +122,7 @@ export async function ensureAndroidChannels() {
     name: "Servicios por aceptar",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "tienes_servicio",
   });
 
@@ -129,6 +130,7 @@ export async function ensureAndroidChannels() {
     name: "Servicio aceptado",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "aceptar_servicio",
   });
 
@@ -136,6 +138,7 @@ export async function ensureAndroidChannels() {
     name: "Ejecutivo llegó",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "uber_llego",
   });
 
@@ -143,6 +146,7 @@ export async function ensureAndroidChannels() {
     name: "Solicitudes cercanas",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "disponibles",
   });
 }

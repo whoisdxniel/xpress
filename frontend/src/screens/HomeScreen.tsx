@@ -479,10 +479,19 @@ export function HomeScreen({ navigation }: Props) {
     const rideStatus = attentionRide?.status as string | undefined;
 
     const isOfferRide = Boolean(attentionRide?.offer);
+    const isFixedPriceRide = Boolean(attentionRide?.isFixedPrice);
 
     // El taxímetro debe seguir contando aunque el chofer navegue a otra pantalla
     // (mientras esta pantalla siga montada y la ride esté en progreso).
-    const shouldRun = Boolean(token && role === "DRIVER" && rideId && rideStatus === "IN_PROGRESS" && !isOfferRide && !meterPaused);
+    const shouldRun = Boolean(
+      token &&
+        role === "DRIVER" &&
+        rideId &&
+        rideStatus === "IN_PROGRESS" &&
+        !isOfferRide &&
+        !isFixedPriceRide &&
+        !meterPaused
+    );
 
     const stop = () => {
       if (meterWatchRef.current) {
@@ -677,6 +686,7 @@ export function HomeScreen({ navigation }: Props) {
     if (!attentionRide) return;
     if (attentionRide.status !== "IN_PROGRESS") return;
     if (attentionRide.offer) return;
+    if (attentionRide.isFixedPrice) return;
 
     meterDistanceRef.current = 0;
     meterLastCoordsRef.current = null;
@@ -1078,6 +1088,20 @@ export function HomeScreen({ navigation }: Props) {
 
                   {attentionRide.status === "ACCEPTED" ? (
                     <>
+                      {attentionRide.isFixedPrice && !attentionRide.offer ? (
+                        <View style={styles.meterBox}>
+                          <View style={styles.meterTitleRow}>
+                            <Ionicons name="cash-outline" size={16} color={colors.gold} />
+                            <Text style={styles.meterTitle}>Precio fijo</Text>
+                          </View>
+
+                          <Text style={styles.meterBigLine}>
+                            {formatCop(Number(attentionRide.fixedPriceCop ?? attentionRide.estimatedPrice ?? 0))}
+                          </Text>
+                          <Text style={styles.meterSmallLine}>Cobro fijo por zona (no aplica taxímetro).</Text>
+                        </View>
+                      ) : null}
+
                       {attentionRide.offer ? (
                         <View style={styles.meterBox}>
                           <View style={styles.meterTitleRow}>
@@ -1131,6 +1155,18 @@ export function HomeScreen({ navigation }: Props) {
                           {attentionRide.agreedPrice != null ? (
                             <Text style={styles.meterBigLine}>Monto acordado: {formatCop(Number(attentionRide.agreedPrice))}</Text>
                           ) : null}
+                        </View>
+                      ) : attentionRide.isFixedPrice ? (
+                        <View style={styles.meterBox}>
+                          <View style={styles.meterTitleRow}>
+                            <Ionicons name="cash-outline" size={16} color={colors.gold} />
+                            <Text style={styles.meterTitle}>Precio fijo</Text>
+                          </View>
+
+                          <Text style={styles.meterBigLine}>
+                            {formatCop(Number(attentionRide.fixedPriceCop ?? attentionRide.estimatedPrice ?? 0))}
+                          </Text>
+                          <Text style={styles.meterSmallLine}>Cobro fijo por zona (no aplica taxímetro).</Text>
                         </View>
                       ) : (
                         <View style={styles.meterBox}>
@@ -1345,7 +1381,7 @@ export function HomeScreen({ navigation }: Props) {
                   Number.isFinite(pickupLng)
               );
 
-              // Importante: no mostramos estimados acá (solo datos base del cliente).
+              // Mostrar monto al chofer para que sepa qué va a cobrar.
 
               return (
                 <Card key={r.rideId} style={{ gap: 10 }}>
@@ -1415,6 +1451,14 @@ export function HomeScreen({ navigation }: Props) {
                       ) : null}
                     </>
                   ) : null}
+
+                  <View style={styles.requestMetaRow}>
+                    <Ionicons name="cash-outline" size={14} color={colors.mutedText} />
+                    <Text style={styles.requestMetaText}>
+                      {r?.isFixedPrice ? "Precio fijo: " : "Estimado: "}
+                      {formatCop(Number(r?.isFixedPrice ? r?.fixedPriceCop ?? r?.estimatedPrice : r?.estimatedPrice))}
+                    </Text>
+                  </View>
 
                   <PrimaryButton label={label} onPress={() => void offerServiceToRide(r.rideId)} disabled={disabled} />
                 </Card>

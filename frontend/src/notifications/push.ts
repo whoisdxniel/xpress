@@ -31,8 +31,8 @@ export function setupNotificationHandlerOnce() {
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        // En Android el sonido lo reproducimos en-app (MP3), y las notifs del sistema van mute.
-        shouldPlaySound: Platform.OS !== "android",
+        // El sonido siempre lo reproducimos en-app (MP3). La notificación del sistema va mute.
+        shouldPlaySound: false,
         shouldSetBadge: false,
       };
     },

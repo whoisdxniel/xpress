@@ -134,3 +134,12 @@ export async function handleIncomingSoundEventFromNotification(notification: Not
   // Si ya llegó como Notification (por iOS/otro), no reprogramamos otra notificación.
   await playNotificationSound(extracted.soundName);
 }
+
+// Fallback para eventos detectados por polling/realtime (sin depender de push):
+// usa el mismo dedupe por `eventId` para evitar doble sonido.
+export async function playInAppSoundOnce(params: { eventId: string; soundName: SoundName }) {
+  const eventId = params.eventId?.trim() ? params.eventId.trim() : "";
+  if (!eventId) return;
+  if (!shouldProcessEventId(eventId)) return;
+  await playNotificationSound(params.soundName);
+}

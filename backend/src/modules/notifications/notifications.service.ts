@@ -85,18 +85,11 @@ export async function sendPushToUser(params: {
       tokens: iosTokens,
       notification: { title: params.title, body: params.body },
       data: baseData,
-      apns: soundName
-        ? {
-            headers: {
-              "apns-priority": "10",
-            },
-            payload: {
-              aps: {
-                sound: `${soundName}.mp3`,
-              },
-            },
-          }
-        : undefined,
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+      },
     });
 
     sent += resIos.successCount;

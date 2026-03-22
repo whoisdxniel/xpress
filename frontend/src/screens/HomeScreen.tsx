@@ -34,7 +34,7 @@ import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from
 import { clearActiveRideOffersRideId, getActiveRideOffersRideId } from "../lib/storage";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
-import { playNotificationSound } from "../notifications/soundPlayer";
+import { playInAppSoundOnce } from "../notifications/incoming";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -74,29 +74,24 @@ export function HomeScreen({ navigation }: Props) {
   const offersRideFirstLoadRef = useRef(true);
 
   const driverPendingRideNotifiedRef = useRef<string | null>(null);
-  const driverNearbyNotifiedRef = useRef(false);
-  const passengerOffersNotifiedRef = useRef(false);
-  const passengerAcceptedNotifiedRideIdRef = useRef<string | null>(null);
 
   const driverNearbyInitializedRef = useRef(false);
   const driverSeenNearbyRideIdsRef = useRef<Set<string>>(new Set());
 
-  const passengerOffersInitializedRef = useRef(false);
-  const passengerSeenOfferIdsRef = useRef<Set<string>>(new Set());
+  const passengerRideOffersInitializedRef = useRef(false);
+  const passengerSeenRideOfferDriverIdsRef = useRef<Set<string>>(new Set());
 
   const isFocused = useIsFocused();
 
   useEffect(() => {
     // Resetea "catch-up" al cambiar de usuario/rol.
     driverPendingRideNotifiedRef.current = null;
-    driverNearbyNotifiedRef.current = false;
-    passengerOffersNotifiedRef.current = false;
-    passengerAcceptedNotifiedRideIdRef.current = null;
 
     driverNearbyInitializedRef.current = false;
     driverSeenNearbyRideIdsRef.current = new Set();
-    passengerOffersInitializedRef.current = false;
-    passengerSeenOfferIdsRef.current = new Set();
+
+    passengerRideOffersInitializedRef.current = false;
+    passengerSeenRideOfferDriverIdsRef.current = new Set();
   }, [userId, role, token]);
 
   const meterIncludedKm = useMemo(() => {
@@ -224,16 +219,7 @@ export function HomeScreen({ navigation }: Props) {
     }
 
     if (role === "USER") {
-      // Catch-up: el cliente entra y el chofer ya aceptó.
-      if (status === "ACCEPTED" && passengerAcceptedNotifiedRideIdRef.current !== rideId) {
-        passengerAcceptedNotifiedRideIdRef.current = rideId;
-        void notifyCatchup({
-          title: "Servicio aceptado",
-          body: "Tu chofer aceptó tu servicio.",
-          soundName: "aceptar_servicio",
-          data: { rideId, type: "CATCHUP_RIDE_ACCEPTED" },
-        });
-      }
+      // (Limpieza) Evitamos sonidos extra fuera de los 4 casos especificados.
     }
   }, [attentionRide?.id, attentionRide?.status, isFocused, role, token]);
 
@@ -406,6 +392,29 @@ export function HomeScreen({ navigation }: Props) {
         const offersRes = await apiGetRideOffers(currentToken, { rideId: currentRideId });
         if (!alive) return;
         setOffersRideCount(Array.isArray(offersRes.items) ? offersRes.items.length : 0);
+
+        // Caso 2 (cliente): por cada ejecutivo que se ofrece -> sonar `aceptar_servicio`.
+        const items = Array.isArray(offersRes.items) ? offersRes.items : [];
+        if (!passengerRideOffersInitializedRef.current) {
+          for (const it of items) {
+            const driverIdRaw = (it as any)?.driverId;
+            const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
+            if (driverId) passengerSeenRideOfferDriverIdsRef.current.add(driverId);
+          }
+          passengerRideOffersInitializedRef.current = true;
+        } else {
+          for (const it of items) {
+            const driverIdRaw = (it as any)?.driverId;
+            const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
+            if (!driverId) continue;
+            if (passengerSeenRideOfferDriverIdsRef.current.has(driverId)) continue;
+            passengerSeenRideOfferDriverIdsRef.current.add(driverId);
+            void playInAppSoundOnce({
+              eventId: `RIDE_OFFERED:${currentRideId}:${driverId}`,
+              soundName: "aceptar_servicio",
+            });
+          }
+        }
       } catch {
         // Si falla (por ejemplo ride borrado), limpiamos el puntero para no quedar clavados.
         await clearActiveRideOffersRideId();
@@ -433,6 +442,8 @@ export function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     if (!offersRideId) return;
     offersRideFirstLoadRef.current = true;
+    passengerRideOffersInitializedRef.current = false;
+    passengerSeenRideOfferDriverIdsRef.current = new Set();
   }, [offersRideId]);
 
   useEffect(() => {
@@ -449,24 +460,6 @@ export function HomeScreen({ navigation }: Props) {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isFocused, role]);
-
-  useEffect(() => {
-    if (!isFocused) return;
-    if (!token) return;
-    if (role !== "DRIVER") return;
-    if (driverNearbyNotifiedRef.current) return;
-
-    // Catch-up: entra como chofer y ya hay solicitudes cercanas.
-    if (Array.isArray(nearbyRequests) && nearbyRequests.length > 0) {
-      driverNearbyNotifiedRef.current = true;
-      void notifyCatchup({
-        title: "Solicitudes cercanas",
-        body: `Tienes ${nearbyRequests.length} solicitudes cerca.`,
-        soundName: "disponibles",
-        data: { type: "CATCHUP_NEARBY_REQUESTS", count: String(nearbyRequests.length) },
-      });
-    }
-  }, [nearbyRequests, isFocused, role, token]);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -501,63 +494,11 @@ export function HomeScreen({ navigation }: Props) {
 
     // Sonar una vez por cada solicitud nueva.
     // (El player ya serializa para evitar solapamientos.)
-    for (const _id of newIds) {
-      void playNotificationSound("disponibles");
+    for (const id of newIds) {
+      void playInAppSoundOnce({ eventId: `RIDE_AVAILABLE:${id}`, soundName: "disponibles" });
     }
   }, [nearbyRequests, isFocused, role, token]);
 
-  useEffect(() => {
-    if (!isFocused) return;
-    if (!token) return;
-    if (role !== "USER") return;
-    if (passengerOffersNotifiedRef.current) return;
-
-    // Catch-up: entra como cliente y ya tiene ofertas (ejecutivos ofrecidos).
-    if (offersRideCount > 0) {
-      passengerOffersNotifiedRef.current = true;
-      void notifyCatchup({
-        title: "Tienes ofertas",
-        body: `Tienes ${offersRideCount} ejecutivo(s) ofrecido(s).`,
-        soundName: "aceptar_servicio",
-        data: { type: "CATCHUP_OFFERS", count: String(offersRideCount) },
-      });
-    }
-  }, [offersRideCount, isFocused, role, token]);
-
-  useEffect(() => {
-    if (!isFocused) return;
-    if (!token) return;
-    if (role !== "USER") return;
-
-    const offers = Array.isArray(myOffers) ? myOffers : [];
-
-    // Primera carga: marcamos sin sonar (ya hay catch-up separado).
-    if (!passengerOffersInitializedRef.current) {
-      for (const it of offers) {
-        const idRaw = (it as any)?.id ?? (it as any)?.offerId;
-        const id = idRaw != null ? String(idRaw) : "";
-        if (id) passengerSeenOfferIdsRef.current.add(id);
-      }
-      passengerOffersInitializedRef.current = true;
-      return;
-    }
-
-    const newIds: string[] = [];
-    for (const it of offers) {
-      const idRaw = (it as any)?.id ?? (it as any)?.offerId;
-      const id = idRaw != null ? String(idRaw) : "";
-      if (!id) continue;
-      if (passengerSeenOfferIdsRef.current.has(id)) continue;
-      passengerSeenOfferIdsRef.current.add(id);
-      newIds.push(id);
-    }
-
-    if (newIds.length === 0) return;
-
-    for (const _id of newIds) {
-      void playNotificationSound("aceptar_servicio");
-    }
-  }, [myOffers, isFocused, role, token]);
 
   useEffect(() => {
     const rideId = attentionRide?.id as string | undefined;

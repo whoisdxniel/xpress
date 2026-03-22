@@ -461,7 +461,7 @@ export async function createRide(params: {
             title: "Solicitud cerca",
             body: "Nuevo cliente solicitó un servicio.",
             soundName: "disponibles",
-            data: { rideId: ride.id, type: "RIDE_AVAILABLE" },
+            data: { rideId: ride.id, type: "RIDE_AVAILABLE", eventId: `RIDE_AVAILABLE:${ride.id}` },
           }).catch(() => null)
         )
       );
@@ -800,7 +800,12 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
     title: "Nueva oferta",
     body: `${driver.fullName} se ofreció.`,
     soundName: "aceptar_servicio",
-    data: { rideId: ride.id, driverId: driver.id, type: "RIDE_OFFERED" },
+    data: {
+      rideId: ride.id,
+      driverId: driver.id,
+      type: "RIDE_OFFERED",
+      eventId: `RIDE_OFFERED:${ride.id}:${driver.id}`,
+    },
   });
 
   return { ok: true as const, candidate };

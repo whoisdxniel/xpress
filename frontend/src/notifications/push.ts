@@ -152,6 +152,14 @@ export async function ensureAndroidChannels() {
     }
   }
 
+  // Canal fallback que Firebase crea/usa cuando llega un push sin channelId válido.
+  // En muchos teléfonos se ve como "Miscellaneous".
+  await ensureChannel({
+    id: "fcm_fallback_notification_channel",
+    name: "Miscellaneous",
+    sound: "disponibles",
+  });
+
   // Creamos/repamos múltiples ids por compatibilidad:
   // - legacy (sin sufijo)
   // - v2 (backends anteriores)

@@ -1,13 +1,10 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
 import { channelIdForSound, normalizeChannelId, type SoundName } from "./channels";
 
 let handlerInstalled = false;
 let foregroundFixInstalled = false;
-
-const CHANNEL_SOUND_REPAIR_KEY = "xpress_channels_sound_repair_v3";
 
 function isExpoGo() {
   const executionEnvironment = (Constants as any)?.executionEnvironment;
@@ -82,71 +79,70 @@ export function setupForegroundSoundFixOnce() {
 export async function ensureAndroidChannels() {
   if (Platform.OS !== "android") return;
 
-  // Android no permite cambiar el sonido de un canal ya creado.
-  // Si el usuario actualiza el APK y los canales quedaron con sonido default,
-  // los borramos una vez y los recreamos con los mp3 en res/raw.
-  try {
-    const repaired = await SecureStore.getItemAsync(CHANNEL_SOUND_REPAIR_KEY);
-    if (repaired !== "1") {
-      const idsToDelete = [
-        // antiguos sin versionar
-        "tienes_servicio",
-        "aceptar_servicio",
-        "uber_llego",
-        "disponibles",
-        // versionados actuales
-        channelIdForSound("tienes_servicio"),
-        channelIdForSound("aceptar_servicio"),
-        channelIdForSound("uber_llego"),
-        channelIdForSound("disponibles"),
-      ];
-
-      await Promise.all(
-        idsToDelete.map(async (id) => {
-          try {
-            await Notifications.deleteNotificationChannelAsync(id);
-          } catch {
-            // best-effort
-          }
-        })
-      );
-
-      await SecureStore.setItemAsync(CHANNEL_SOUND_REPAIR_KEY, "1");
+  async function safeDeleteChannel(id: string) {
+    try {
+      await Notifications.deleteNotificationChannelAsync(id);
+    } catch {
+      // best-effort
     }
-  } catch {
-    // best-effort
   }
 
-  // Canal por sonido, para que FCM pueda elegir canalId.
-  await Notifications.setNotificationChannelAsync(channelIdForSound("tienes_servicio"), {
+  // Limpia ids legacy (sin versionar) por si quedaron creados con sonido default.
+  await Promise.all(["tienes_servicio", "aceptar_servicio", "uber_llego", "disponibles"].map(safeDeleteChannel));
+
+  async function ensureChannel(params: {
+    id: string;
+    name: string;
+    sound: SoundName;
+  }) {
+    const desiredSound = params.sound;
+
+    // Si el canal ya existe pero su sonido quedó en default/none, Android no permite cambiarlo.
+    // En ese caso, borramos y recreamos.
+    try {
+      const existing = await Notifications.getNotificationChannelAsync(params.id);
+      const existingSound = typeof (existing as any)?.sound === "string" ? String((existing as any).sound).trim() : "";
+      if (existing && existingSound && existingSound !== desiredSound) {
+        await safeDeleteChannel(params.id);
+      }
+      if (existing && !existingSound) {
+        await safeDeleteChannel(params.id);
+      }
+    } catch {
+      // best-effort
+    }
+
+    await Notifications.setNotificationChannelAsync(params.id, {
+      name: params.name,
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
+      sound: desiredSound,
+    });
+  }
+
+  // Canal por sonido, para que FCM pueda elegir channelId.
+  await ensureChannel({
+    id: channelIdForSound("tienes_servicio"),
     name: "Servicios por aceptar",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "tienes_servicio",
   });
 
-  await Notifications.setNotificationChannelAsync(channelIdForSound("aceptar_servicio"), {
+  await ensureChannel({
+    id: channelIdForSound("aceptar_servicio"),
     name: "Servicio aceptado",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "aceptar_servicio",
   });
 
-  await Notifications.setNotificationChannelAsync(channelIdForSound("uber_llego"), {
+  await ensureChannel({
+    id: channelIdForSound("uber_llego"),
     name: "Ejecutivo llegó",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "uber_llego",
   });
 
-  await Notifications.setNotificationChannelAsync(channelIdForSound("disponibles"), {
+  await ensureChannel({
+    id: channelIdForSound("disponibles"),
     name: "Solicitudes cercanas",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
     sound: "disponibles",
   });
 }

@@ -497,7 +497,6 @@ export async function assignRideDriverByAdmin(params: { rideId: string; driverId
     title: "Chofer asignado",
     body: "El admin asignó un chofer a tu servicio",
     soundName: "aceptar_servicio",
-    channelId: "aceptar_servicio",
     data: { rideId: updated.id, type: "RIDE_ASSIGNED" },
   });
 
@@ -506,7 +505,6 @@ export async function assignRideDriverByAdmin(params: { rideId: string; driverId
     title: "Nuevo servicio",
     body: "Tienes un servicio para aceptar",
     soundName: "tienes_servicio",
-    channelId: "tienes_servicio",
     times: 2,
     intervalMs: 1200,
     data: { rideId: updated.id, type: "RIDE_ASSIGNED" },

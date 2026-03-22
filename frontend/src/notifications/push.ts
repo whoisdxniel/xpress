@@ -1,15 +1,16 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import type { SoundName } from "./channels";
-import { playNotificationSound } from "./soundPlayer";
 import { BACKGROUND_NOTIFICATION_TASK } from "./backgroundSoundTask";
+import {
+  ensureAndroidSilentChannel,
+  handleIncomingSoundEventFromNotification,
+  ANDROID_SILENT_CHANNEL_ID,
+} from "./incoming";
 
 let handlerInstalled = false;
 let inAppSoundInstalled = false;
 let backgroundTaskRegistered = false;
-
-export const ANDROID_DEFAULT_CHANNEL_ID = "xpress_default_v1";
 
 function isExpoGo() {
   const executionEnvironment = (Constants as any)?.executionEnvironment;
@@ -30,7 +31,8 @@ export function setupNotificationHandlerOnce() {
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: true,
+        // En Android el sonido lo reproducimos en-app (MP3), y las notifs del sistema van mute.
+        shouldPlaySound: Platform.OS !== "android",
         shouldSetBadge: false,
       };
     },
@@ -41,23 +43,10 @@ export function setupInAppSoundOnce() {
   if (inAppSoundInstalled) return;
   inAppSoundInstalled = true;
 
-  // Cuando la app está viva (foreground o en algunos casos background),
-  // reproducimos el sonido custom además del sonido del sistema.
+  // Si llega una Notification (iOS / local / edge cases), podemos reproducir el MP3.
+  // OJO: las notificaciones locales que generamos desde Task se marcan y se ignoran.
   Notifications.addNotificationReceivedListener((notification) => {
-    try {
-      const data: any = (notification.request?.content?.data ?? {}) as any;
-      const raw = typeof data.soundName === "string" ? data.soundName.trim() : "";
-      if (!raw) return;
-
-      const name = raw as SoundName;
-      if (!(["tienes_servicio", "aceptar_servicio", "uber_llego", "disponibles"] as const).includes(name as any)) {
-        return;
-      }
-
-      void playNotificationSound(name);
-    } catch {
-      // silencioso
-    }
+    void handleIncomingSoundEventFromNotification(notification);
   });
 }
 
@@ -88,7 +77,7 @@ export async function ensureAndroidChannels() {
   }
 
   // Limpieza: evita que MIUI acumule categorías duplicadas.
-  // Ahora usamos 1 solo canal default y el sonido custom lo reproducimos en la app.
+  // Ahora usamos un canal silencioso (la app reproduce el MP3 por su cuenta).
   await Promise.all(
     [
       // legacy
@@ -108,18 +97,20 @@ export async function ensureAndroidChannels() {
       "disponibles_v3",
       // fallbacks anteriores que creamos
       "xpress_fallback_v1",
-      // canal default
-      ANDROID_DEFAULT_CHANNEL_ID,
+      // canal default anterior
+      "xpress_default_v1",
     ].map(safeDeleteChannel)
   );
 
-  // Un único canal para que el sistema use el sonido default del teléfono.
-  // (El MP3 específico se reproduce desde JS en foreground/background.)
-  await Notifications.setNotificationChannelAsync(ANDROID_DEFAULT_CHANNEL_ID, {
-    name: "Xpress",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-  });
+  await ensureAndroidSilentChannel();
+
+  // Compat: si por alguna razón otra parte agenda usando el id antiguo, lo migramos.
+  try {
+    // No-op: solo referencia para que TS no elimine el import.
+    void ANDROID_SILENT_CHANNEL_ID;
+  } catch {
+    // ignore
+  }
 }
 
 export async function getNativePushToken() {

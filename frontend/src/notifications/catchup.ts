@@ -1,26 +1,39 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import { channelIdForSound, type SoundName } from "./channels";
+import type { SoundName } from "./channels";
+import { playNotificationSound } from "./soundPlayer";
+import { presentSilentLocalNotification } from "./incoming";
 
 export async function notifyCatchup(params: {
   title: string;
   body: string;
   soundName: SoundName;
-  channelId?: string;
   data?: Record<string, any>;
 }) {
   try {
-    const channelId = params.channelId?.trim() ? params.channelId.trim() : channelIdForSound(params.soundName);
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: params.title,
-        body: params.body,
-        data: params.data ?? {},
-        ...(Platform.OS === "android" ? { channelId } : null),
-        ...(Platform.OS === "ios" ? { sound: `${params.soundName}.mp3` } : null),
-      },
-      trigger: null,
-    });
+    // Notificación silenciosa (Android) + sonido in-app.
+    if (Platform.OS === "android") {
+      const shouldNotify = params.soundName === "tienes_servicio" || params.soundName === "uber_llego";
+      if (shouldNotify) {
+        await presentSilentLocalNotification({
+          title: params.title,
+          body: params.body,
+          data: { ...(params.data ?? {}), soundName: params.soundName },
+        });
+      }
+    } else {
+      // iOS: mantenemos comportamiento estándar (sin forzar sound aquí) para no romper.
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: params.title,
+          body: params.body,
+          data: { ...(params.data ?? {}), soundName: params.soundName },
+        },
+        trigger: null,
+      });
+    }
+
+    await playNotificationSound(params.soundName);
   } catch {
     // best-effort
   }

@@ -460,8 +460,7 @@ export async function createRide(params: {
             userId: t.userId,
             title: "Solicitud cerca",
             body: "Nuevo cliente solicitó un servicio.",
-            soundName: "tienes_servicio",
-            channelId: "tienes_servicio",
+            soundName: "disponibles",
             data: { rideId: ride.id, type: "RIDE_AVAILABLE" },
           }).catch(() => null)
         )
@@ -801,7 +800,6 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
     title: "Nueva oferta",
     body: `${driver.fullName} se ofreció.`,
     soundName: "aceptar_servicio",
-    channelId: "aceptar_servicio",
     data: { rideId: ride.id, driverId: driver.id, type: "RIDE_OFFERED" },
   });
 
@@ -1051,7 +1049,6 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
     title: "Nuevo servicio",
     body: "Fuiste seleccionado para un servicio",
     soundName: "tienes_servicio",
-    channelId: "tienes_servicio",
     times: 2,
     intervalMs: 1200,
     data: { rideId: updated.id, type: "RIDE_ACCEPTED" },

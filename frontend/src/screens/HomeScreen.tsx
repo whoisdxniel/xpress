@@ -34,6 +34,7 @@ import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from
 import { clearActiveRideOffersRideId, getActiveRideOffersRideId } from "../lib/storage";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
+import { playNotificationSound } from "../notifications/soundPlayer";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -77,6 +78,12 @@ export function HomeScreen({ navigation }: Props) {
   const passengerOffersNotifiedRef = useRef(false);
   const passengerAcceptedNotifiedRideIdRef = useRef<string | null>(null);
 
+  const driverNearbyInitializedRef = useRef(false);
+  const driverSeenNearbyRideIdsRef = useRef<Set<string>>(new Set());
+
+  const passengerOffersInitializedRef = useRef(false);
+  const passengerSeenOfferIdsRef = useRef<Set<string>>(new Set());
+
   const isFocused = useIsFocused();
 
   useEffect(() => {
@@ -85,6 +92,11 @@ export function HomeScreen({ navigation }: Props) {
     driverNearbyNotifiedRef.current = false;
     passengerOffersNotifiedRef.current = false;
     passengerAcceptedNotifiedRideIdRef.current = null;
+
+    driverNearbyInitializedRef.current = false;
+    driverSeenNearbyRideIdsRef.current = new Set();
+    passengerOffersInitializedRef.current = false;
+    passengerSeenOfferIdsRef.current = new Set();
   }, [userId, role, token]);
 
   const meterIncludedKm = useMemo(() => {
@@ -459,6 +471,44 @@ export function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     if (!isFocused) return;
     if (!token) return;
+    if (role !== "DRIVER") return;
+
+    const items = Array.isArray(nearbyRequests) ? nearbyRequests : [];
+
+    // Primera carga: marcamos sin sonar (ya hay catch-up separado).
+    if (!driverNearbyInitializedRef.current) {
+      for (const it of items) {
+        const idRaw = (it as any)?.id ?? (it as any)?.rideId ?? (it as any)?.ride?.id;
+        const id = idRaw != null ? String(idRaw) : "";
+        if (id) driverSeenNearbyRideIdsRef.current.add(id);
+      }
+      driverNearbyInitializedRef.current = true;
+      return;
+    }
+
+    // Cada nuevo cliente que aparece (por polling) debe sonar `disponibles`.
+    const newIds: string[] = [];
+    for (const it of items) {
+      const idRaw = (it as any)?.id ?? (it as any)?.rideId ?? (it as any)?.ride?.id;
+      const id = idRaw != null ? String(idRaw) : "";
+      if (!id) continue;
+      if (driverSeenNearbyRideIdsRef.current.has(id)) continue;
+      driverSeenNearbyRideIdsRef.current.add(id);
+      newIds.push(id);
+    }
+
+    if (newIds.length === 0) return;
+
+    // Sonar una vez por cada solicitud nueva.
+    // (El player ya serializa para evitar solapamientos.)
+    for (const _id of newIds) {
+      void playNotificationSound("disponibles");
+    }
+  }, [nearbyRequests, isFocused, role, token]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!token) return;
     if (role !== "USER") return;
     if (passengerOffersNotifiedRef.current) return;
 
@@ -473,6 +523,41 @@ export function HomeScreen({ navigation }: Props) {
       });
     }
   }, [offersRideCount, isFocused, role, token]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!token) return;
+    if (role !== "USER") return;
+
+    const offers = Array.isArray(myOffers) ? myOffers : [];
+
+    // Primera carga: marcamos sin sonar (ya hay catch-up separado).
+    if (!passengerOffersInitializedRef.current) {
+      for (const it of offers) {
+        const idRaw = (it as any)?.id ?? (it as any)?.offerId;
+        const id = idRaw != null ? String(idRaw) : "";
+        if (id) passengerSeenOfferIdsRef.current.add(id);
+      }
+      passengerOffersInitializedRef.current = true;
+      return;
+    }
+
+    const newIds: string[] = [];
+    for (const it of offers) {
+      const idRaw = (it as any)?.id ?? (it as any)?.offerId;
+      const id = idRaw != null ? String(idRaw) : "";
+      if (!id) continue;
+      if (passengerSeenOfferIdsRef.current.has(id)) continue;
+      passengerSeenOfferIdsRef.current.add(id);
+      newIds.push(id);
+    }
+
+    if (newIds.length === 0) return;
+
+    for (const _id of newIds) {
+      void playNotificationSound("aceptar_servicio");
+    }
+  }, [myOffers, isFocused, role, token]);
 
   useEffect(() => {
     const rideId = attentionRide?.id as string | undefined;

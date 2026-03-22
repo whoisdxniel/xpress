@@ -108,7 +108,6 @@ export async function driverAcceptRideController(req: Request, res: Response) {
     title: "Servicio aceptado",
     body: "Tu chofer aceptó tu servicio",
     soundName: "aceptar_servicio",
-    channelId: "aceptar_servicio",
     data: { rideId: updated.id, type: "RIDE_ACCEPTED" },
   });
 
@@ -263,7 +262,6 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
     title: "Tu ejecutivo está en el lugar",
     body: "Tu ejecutivo ya llegó al punto de recogida.",
     soundName: "uber_llego",
-    channelId: "uber_llego",
     data: { rideId: ride.id, type: "DRIVER_ARRIVED" },
   });
 
@@ -289,7 +287,6 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
     title: "Tu ejecutivo está en el lugar",
     body: "Tu ejecutivo ya llegó al punto de recogida.",
     soundName: "uber_llego",
-    channelId: "uber_llego",
     times: 2,
     intervalMs: 1200,
     data: { rideId: ride.id, type: "DRIVER_ARRIVED" },

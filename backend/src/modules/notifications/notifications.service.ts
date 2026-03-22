@@ -4,57 +4,8 @@ import { getFCMOrNull } from "../../integrations/fcm";
 
 let warnedFcmNotConfigured = false;
 
-const CHANNEL_VERSION_SUFFIX = "_v3";
-
-function channelIdForSound(soundName: string) {
-  return `${soundName}${CHANNEL_VERSION_SUFFIX}`;
-}
-
-function normalizeChannelId(params: { soundName?: string; channelId?: string }) {
-  const soundName = params.soundName?.trim() ? params.soundName.trim() : "";
-  if (!soundName) return undefined;
-
-  const raw = params.channelId?.trim() ? params.channelId.trim() : "";
-  if (!raw) return channelIdForSound(soundName);
-
-  // Si el caller pasa el id antiguo igual al soundName, migramos a v2.
-  if (raw === soundName) return channelIdForSound(soundName);
-
-  // Si ya viene versionado, lo dejamos.
-  if (raw.endsWith(CHANNEL_VERSION_SUFFIX)) return raw;
-
-  // Si viene de una versión anterior, migramos al id actual.
-  if (raw.endsWith("_v2")) return channelIdForSound(soundName);
-
-  // Si es uno de los ids antiguos conocidos, migramos a v2.
-  if (raw === "tienes_servicio") return channelIdForSound("tienes_servicio");
-  if (raw === "aceptar_servicio") return channelIdForSound("aceptar_servicio");
-  if (raw === "uber_llego") return channelIdForSound("uber_llego");
-  if (raw === "disponibles") return channelIdForSound("disponibles");
-
-  return raw;
-}
-
-function normalizeAnyChannelId(channelIdRaw?: string) {
-  const raw = channelIdRaw?.trim() ? channelIdRaw.trim() : "";
-  if (!raw) return "";
-
-  // Si ya viene versionado v3, lo dejamos.
-  if (raw.endsWith(CHANNEL_VERSION_SUFFIX)) return raw;
-
-  // Si viene de v2, migramos a v3.
-  if (raw.endsWith("_v2")) {
-    const base = raw.slice(0, -3); // quita _v2
-    return `${base}${CHANNEL_VERSION_SUFFIX}`;
-  }
-
-  // Mapeo de ids legacy conocidos.
-  if (raw === "tienes_servicio") return channelIdForSound("tienes_servicio");
-  if (raw === "aceptar_servicio") return channelIdForSound("aceptar_servicio");
-  if (raw === "uber_llego") return channelIdForSound("uber_llego");
-  if (raw === "disponibles") return channelIdForSound("disponibles");
-
-  return raw;
+function makeEventId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function sleep(ms: number) {
@@ -79,7 +30,6 @@ export async function sendPushToUser(params: {
   body: string;
   data?: Record<string, string>;
   soundName?: string;
-  channelId?: string;
 }) {
   const messaging = getFCMOrNull();
   if (!messaging) {
@@ -94,19 +44,13 @@ export async function sendPushToUser(params: {
   if (tokens.length === 0) return { ok: true as const, sent: 0, failed: 0 };
 
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
-  const normalizedChannelId = soundName ? normalizeChannelId({ soundName, channelId: params.channelId }) : undefined;
+  const eventId = params.data?.eventId?.trim() ? params.data.eventId.trim() : makeEventId();
 
-  // En Android usamos un canal único con sonido default del teléfono.
-  // El sonido MP3 específico se reproduce desde la app (TaskManager) al recibir el push.
-  const androidChannelId = "xpress_default_v1";
-
-  const baseData: Record<string, string> | undefined = soundName
-    ? {
-        ...(params.data ?? {}),
-        soundName,
-        ...(normalizedChannelId ? { channelId: normalizedChannelId } : null),
-      }
-    : params.data;
+  const baseData: Record<string, string> = {
+    ...(params.data ?? {}),
+    eventId,
+    ...(soundName ? { soundName } : null),
+  };
 
   const androidTokens = tokens.filter((t) => t.platform === "ANDROID").map((t) => t.token);
   const iosTokens = tokens.filter((t) => t.platform === "IOS").map((t) => t.token);
@@ -114,15 +58,13 @@ export async function sendPushToUser(params: {
   let sent = 0;
   let failed = 0;
 
-  // ANDROID: data-only (para que onMessageReceived corra en background) + payload Expo (title/message/sound/channelId)
+  // ANDROID: data-only (para que onMessageReceived corra en background).
+  // La app reproduce el MP3 leyendo `soundName` y crea la notificación local silenciosa.
   if (androidTokens.length > 0) {
     const androidData: Record<string, string> = {
-      ...(baseData ?? {}),
+      ...baseData,
       title: params.title,
       message: params.body,
-      channelId: androidChannelId,
-      // Nota: NO enviamos `sound` aquí para que el sistema use el sonido default del teléfono.
-      // El MP3 específico se reproduce desde JS leyendo `soundName`.
     };
 
     const resAndroid = await messaging.sendEachForMulticast({
@@ -170,7 +112,6 @@ export function sendPushToUserBurst(params: {
   body: string;
   data?: Record<string, string>;
   soundName: string;
-  channelId?: string;
   times: number;
   intervalMs?: number;
 }) {
@@ -186,7 +127,6 @@ export function sendPushToUserBurst(params: {
           title: params.title,
           body: params.body,
           soundName: params.soundName,
-          channelId: params.channelId,
           data: {
             ...(params.data ?? {}),
             soundName: params.soundName,

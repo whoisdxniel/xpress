@@ -433,7 +433,6 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
     title: "Contraoferta aceptada",
     body: "Un chofer se comprometió con tu oferta",
     soundName: "aceptar_servicio",
-    channelId: "aceptar_servicio",
     data: { rideId: created.ride.id, offerId: offer.id, type: "OFFER_COMMITTED" },
   });
 

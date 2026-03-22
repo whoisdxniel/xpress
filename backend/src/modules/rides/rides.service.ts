@@ -460,8 +460,8 @@ export async function createRide(params: {
             userId: t.userId,
             title: "Solicitud cerca",
             body: "Nuevo cliente solicitó un servicio.",
-            soundName: "disponibles",
-            channelId: "disponibles",
+            soundName: "tienes_servicio",
+            channelId: "tienes_servicio",
             data: { rideId: ride.id, type: "RIDE_AVAILABLE" },
           }).catch(() => null)
         )

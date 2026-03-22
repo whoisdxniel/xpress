@@ -87,8 +87,24 @@ export async function ensureAndroidChannels() {
     }
   }
 
-  // Nota: NO borramos en masa canales v2/legacy porque pueden estar siendo usados
-  // por backends viejos. En vez de eso, los reparamos idempotentemente más abajo.
+  // Limpieza: evita que se acumulen categorías duplicadas (MIUI muestra todas).
+  // Dejamos sólo canales v3 + el fallback real de FCM.
+  await Promise.all(
+    [
+      // legacy
+      "tienes_servicio",
+      "aceptar_servicio",
+      "uber_llego",
+      "disponibles",
+      // v2
+      "tienes_servicio_v2",
+      "aceptar_servicio_v2",
+      "uber_llego_v2",
+      "disponibles_v2",
+      // fallbacks anteriores que creamos
+      "xpress_fallback_v1",
+    ].map(safeDeleteChannel)
+  );
 
   async function ensureChannel(params: {
     id: string;
@@ -152,37 +168,19 @@ export async function ensureAndroidChannels() {
     }
   }
 
-  // Canal fallback que Firebase crea/usa cuando llega un push sin channelId válido.
-  // En muchos teléfonos se ve como "Miscellaneous".
+  // Fallback real de Firebase cuando llega push sin channelId. Algunos equipos lo muestran como "Miscellaneous".
+  // Lo reparamos para que, si por alguna razón se usa, NO suene el default del teléfono.
   await ensureChannel({
     id: "fcm_fallback_notification_channel",
-    name: "Miscellaneous",
-    sound: "disponibles",
+    name: "Xpress (fallback)",
+    sound: "tienes_servicio",
   });
 
-  // Creamos/repamos múltiples ids por compatibilidad:
-  // - legacy (sin sufijo)
-  // - v2 (backends anteriores)
-  // - v3 (actual)
-  const variantsFor = (sound: SoundName) => {
-    const legacy = sound;
-    const v2 = `${sound}_v2`;
-    const v3 = channelIdForSound(sound);
-    return [legacy, v2, v3];
-  };
-
-  for (const id of variantsFor("tienes_servicio")) {
-    await ensureChannel({ id, name: "Servicios por aceptar", sound: "tienes_servicio" });
-  }
-  for (const id of variantsFor("aceptar_servicio")) {
-    await ensureChannel({ id, name: "Servicio aceptado", sound: "aceptar_servicio" });
-  }
-  for (const id of variantsFor("uber_llego")) {
-    await ensureChannel({ id, name: "Ejecutivo llegó", sound: "uber_llego" });
-  }
-  for (const id of variantsFor("disponibles")) {
-    await ensureChannel({ id, name: "Solicitudes cercanas", sound: "disponibles" });
-  }
+  // Canales v3 (únicos) por sonido.
+  await ensureChannel({ id: channelIdForSound("tienes_servicio"), name: "Servicios por aceptar", sound: "tienes_servicio" });
+  await ensureChannel({ id: channelIdForSound("aceptar_servicio"), name: "Servicio aceptado", sound: "aceptar_servicio" });
+  await ensureChannel({ id: channelIdForSound("uber_llego"), name: "Ejecutivo llegó", sound: "uber_llego" });
+  await ensureChannel({ id: channelIdForSound("disponibles"), name: "Solicitudes cercanas", sound: "disponibles" });
 }
 
 export async function getNativePushToken() {

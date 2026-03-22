@@ -130,6 +130,29 @@ export async function handleIncomingSoundEventFromNotification(notification: Not
 }
 
 // Fallback para eventos detectados por polling/realtime (sin depender de push):
+// muestra notificación local silenciosa (Android) y reproduce el MP3.
+// Usa el mismo dedupe por `eventId` para evitar doble notificación/sonido.
+export async function notifyAndPlayInAppOnce(params: {
+  eventId: string;
+  soundName: SoundName;
+  title?: string;
+  body?: string;
+  data?: Record<string, any>;
+}) {
+  const eventId = params.eventId?.trim() ? params.eventId.trim() : "";
+  if (!eventId) return;
+  if (!shouldProcessEventId(eventId)) return;
+
+  await presentSilentLocalNotification({
+    title: params.title,
+    body: params.body,
+    data: { ...(params.data ?? {}), eventId, soundName: params.soundName },
+  });
+
+  await playNotificationSound(params.soundName);
+}
+
+// Fallback para eventos detectados por polling/realtime (sin depender de push):
 // usa el mismo dedupe por `eventId` para evitar doble sonido.
 export async function playInAppSoundOnce(params: { eventId: string; soundName: SoundName }) {
   const eventId = params.eventId?.trim() ? params.eventId.trim() : "";

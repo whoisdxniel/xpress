@@ -34,7 +34,7 @@ import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from
 import { clearActiveRideOffersRideId, getActiveRideOffersRideId, setActiveRideOffersRideId } from "../lib/storage";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
-import { playInAppSoundOnce } from "../notifications/incoming";
+import { notifyAndPlayInAppOnce, playInAppSoundOnce } from "../notifications/incoming";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -414,28 +414,31 @@ export function HomeScreen({ navigation }: Props) {
         if (!alive) return;
         setOffersRideCount(Array.isArray(offersRes.items) ? offersRes.items.length : 0);
 
-        // Caso 2 (cliente): por cada ejecutivo que se ofrece -> sonar `aceptar_servicio`.
+        // Caso 2 (cliente): por cada ejecutivo que se ofrece -> sonar `aceptar_servicio`
+        // y mostrar notificación (silenciosa) en la barra.
         const items = Array.isArray(offersRes.items) ? offersRes.items : [];
-        if (!passengerRideOffersInitializedRef.current) {
-          for (const it of items) {
-            const driverIdRaw = (it as any)?.driverId;
-            const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
-            if (driverId) passengerSeenRideOfferDriverIdsRef.current.add(driverId);
-          }
-          passengerRideOffersInitializedRef.current = true;
-        } else {
-          for (const it of items) {
-            const driverIdRaw = (it as any)?.driverId;
-            const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
-            if (!driverId) continue;
-            if (passengerSeenRideOfferDriverIdsRef.current.has(driverId)) continue;
-            passengerSeenRideOfferDriverIdsRef.current.add(driverId);
-            void playInAppSoundOnce({
-              eventId: `RIDE_OFFERED:${currentRideId}:${driverId}`,
-              soundName: "aceptar_servicio",
-            });
-          }
+        for (const it of items) {
+          const driverIdRaw = (it as any)?.driverId;
+          const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
+          if (!driverId) continue;
+
+          const fullNameRaw = (it as any)?.fullName;
+          const fullName = fullNameRaw != null ? String(fullNameRaw) : "";
+
+          if (passengerSeenRideOfferDriverIdsRef.current.has(driverId)) continue;
+          passengerSeenRideOfferDriverIdsRef.current.add(driverId);
+
+          const eventId = `RIDE_OFFERED:${currentRideId}:${driverId}`;
+          void notifyAndPlayInAppOnce({
+            eventId,
+            soundName: "aceptar_servicio",
+            title: "Nueva oferta",
+            body: fullName ? `${fullName} se ofreció.` : "Un ejecutivo se ofreció.",
+            data: { rideId: currentRideId, driverId, type: "RIDE_OFFERED" },
+          });
         }
+
+        passengerRideOffersInitializedRef.current = true;
       } catch {
         // Si falla (por ejemplo ride borrado), limpiamos el puntero para no quedar clavados.
         await clearActiveRideOffersRideId();

@@ -87,19 +87,8 @@ export async function ensureAndroidChannels() {
     }
   }
 
-  // Limpia ids legacy (sin versionar) y versionados anteriores por si quedaron con sonido default.
-  await Promise.all(
-    [
-      "tienes_servicio",
-      "aceptar_servicio",
-      "uber_llego",
-      "disponibles",
-      "tienes_servicio_v2",
-      "aceptar_servicio_v2",
-      "uber_llego_v2",
-      "disponibles_v2",
-    ].map(safeDeleteChannel)
-  );
+  // Nota: NO borramos en masa canales v2/legacy porque pueden estar siendo usados
+  // por backends viejos. En vez de eso, los reparamos idempotentemente más abajo.
 
   async function ensureChannel(params: {
     id: string;
@@ -163,30 +152,29 @@ export async function ensureAndroidChannels() {
     }
   }
 
-  // Canal por sonido, para que FCM pueda elegir channelId.
-  await ensureChannel({
-    id: channelIdForSound("tienes_servicio"),
-    name: "Servicios por aceptar",
-    sound: "tienes_servicio",
-  });
+  // Creamos/repamos múltiples ids por compatibilidad:
+  // - legacy (sin sufijo)
+  // - v2 (backends anteriores)
+  // - v3 (actual)
+  const variantsFor = (sound: SoundName) => {
+    const legacy = sound;
+    const v2 = `${sound}_v2`;
+    const v3 = channelIdForSound(sound);
+    return [legacy, v2, v3];
+  };
 
-  await ensureChannel({
-    id: channelIdForSound("aceptar_servicio"),
-    name: "Servicio aceptado",
-    sound: "aceptar_servicio",
-  });
-
-  await ensureChannel({
-    id: channelIdForSound("uber_llego"),
-    name: "Ejecutivo llegó",
-    sound: "uber_llego",
-  });
-
-  await ensureChannel({
-    id: channelIdForSound("disponibles"),
-    name: "Solicitudes cercanas",
-    sound: "disponibles",
-  });
+  for (const id of variantsFor("tienes_servicio")) {
+    await ensureChannel({ id, name: "Servicios por aceptar", sound: "tienes_servicio" });
+  }
+  for (const id of variantsFor("aceptar_servicio")) {
+    await ensureChannel({ id, name: "Servicio aceptado", sound: "aceptar_servicio" });
+  }
+  for (const id of variantsFor("uber_llego")) {
+    await ensureChannel({ id, name: "Ejecutivo llegó", sound: "uber_llego" });
+  }
+  for (const id of variantsFor("disponibles")) {
+    await ensureChannel({ id, name: "Solicitudes cercanas", sound: "disponibles" });
+  }
 }
 
 export async function getNativePushToken() {

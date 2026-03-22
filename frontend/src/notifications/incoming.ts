@@ -58,12 +58,6 @@ export async function ensureAndroidSilentChannel() {
   }
 }
 
-function shouldPresentAndroidSilentNotification(soundName: SoundName): boolean {
-  // Según el requerimiento: casos 3 y 4 llevan notificación + sonido in-app.
-  // Casos 1 y 2 deben ser “en la app” (sin ensuciar la barra de notificaciones).
-  return soundName === "tienes_servicio" || soundName === "uber_llego";
-}
-
 function extractFromData(data: any): {
   eventId: string | null;
   soundName: SoundName;
@@ -113,14 +107,14 @@ export async function handleIncomingSoundEventFromTask(taskData: any) {
   if (!extracted) return;
   if (!shouldProcessEventId(extracted.eventId)) return;
 
-  // En Android: sólo algunos eventos deben mostrarse como notificación.
-  if (Platform.OS === "android" && shouldPresentAndroidSilentNotification(extracted.soundName)) {
-    await presentSilentLocalNotification({
-      title: extracted.title,
-      body: extracted.body,
-      data: extracted.data,
-    });
-  }
+  // En Android: las push remotas llegan como data-only, así que la notificación visible
+  // la crea la app (siempre silenciosa). Esto mantiene las notificaciones “vivas”
+  // con la app activa o minimizada.
+  await presentSilentLocalNotification({
+    title: extracted.title,
+    body: extracted.body,
+    data: extracted.data,
+  });
 
   await playNotificationSound(extracted.soundName);
 }

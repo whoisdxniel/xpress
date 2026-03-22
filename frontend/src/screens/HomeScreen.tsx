@@ -31,7 +31,7 @@ import type { NearbyOfferItem } from "../offers/offers.types";
 import { serviceTypeLabel } from "../utils/serviceType";
 import { rideStatusLabel, roleLabel, userDisplayName } from "../utils/labels";
 import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from "../utils/location";
-import { clearActiveRideOffersRideId, getActiveRideOffersRideId } from "../lib/storage";
+import { clearActiveRideOffersRideId, getActiveRideOffersRideId, setActiveRideOffersRideId } from "../lib/storage";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
 import { playInAppSoundOnce } from "../notifications/incoming";
@@ -190,6 +190,27 @@ export function HomeScreen({ navigation }: Props) {
     try {
       const res = await apiGetActiveRide(token);
       setAttentionRide(res.ride);
+
+      // Caso 2 (cliente): si hay una ride OPEN sin chofer asignado, queremos escuchar ofertas
+      // desde la pantalla de inicio aunque el flag no se haya guardado por algún flujo.
+      if (role === "USER") {
+        const rideIdRaw = (res.ride as any)?.id;
+        const rideId = rideIdRaw != null ? String(rideIdRaw) : "";
+        const status = String((res.ride as any)?.status ?? "");
+        const matched = Boolean((res.ride as any)?.matchedDriverId);
+
+        if (rideId && status === "OPEN" && !matched) {
+          // best-effort: persistimos y seteamos estado local
+          void setActiveRideOffersRideId(rideId);
+          setOffersRideId(rideId);
+        }
+
+        if (!rideId || status !== "OPEN" || matched) {
+          // Si ya no aplica, limpiamos el puntero.
+          void clearActiveRideOffersRideId();
+          setOffersRideId(null);
+        }
+      }
     } catch (e) {
       setRideError(e instanceof Error ? e.message : "No se pudo cargar el estado del viaje");
     } finally {

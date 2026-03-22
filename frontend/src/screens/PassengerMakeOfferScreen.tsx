@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
 
@@ -350,100 +350,102 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.sheet}>
-        <Card style={{ gap: 10 }}>
-          <Text style={styles.hint}>Tocá el mapa para elegir el destino.</Text>
+        <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <Card style={{ gap: 10 }}>
+            <Text style={styles.hint}>Tocá el mapa para elegir el destino.</Text>
 
-          <View style={styles.pillRow}>
-            {(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"] as const).map((t) => {
-              const active = serviceTypeWanted === t;
-              const iconColor = active ? colors.gold : colors.mutedText;
+            <View style={styles.pillRow}>
+              {(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"] as const).map((t) => {
+                const active = serviceTypeWanted === t;
+                const iconColor = active ? colors.gold : colors.mutedText;
 
-              return (
-                <Pressable key={t} style={[styles.pill, active ? styles.pillActive : null]} onPress={() => setServiceTypeWanted(t)}>
-                  <View style={styles.pillInner}>
-                    <View style={styles.pillIconWrap}>
-                      <Ionicons name={serviceTypeIconName(t)} size={16} color={iconColor} />
-                      {serviceTypeHasCargo(t) ? (
-                        <View style={styles.pillCargoBadge}>
-                          <Ionicons name="cube-outline" size={10} color={iconColor} />
-                        </View>
-                      ) : null}
+                return (
+                  <Pressable key={t} style={[styles.pill, active ? styles.pillActive : null]} onPress={() => setServiceTypeWanted(t)}>
+                    <View style={styles.pillInner}>
+                      <View style={styles.pillIconWrap}>
+                        <Ionicons name={serviceTypeIconName(t)} size={16} color={iconColor} />
+                        {serviceTypeHasCargo(t) ? (
+                          <View style={styles.pillCargoBadge}>
+                            <Ionicons name="cube-outline" size={10} color={iconColor} />
+                          </View>
+                        ) : null}
+                      </View>
+
+                      <Text style={[styles.pillText, active ? styles.pillTextActive : null]}>{serviceTypeLabel(t)}</Text>
                     </View>
-
-                    <Text style={[styles.pillText, active ? styles.pillTextActive : null]}>{serviceTypeLabel(t)}</Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={styles.line}>Radio de búsqueda: 5 km</Text>
-
-          {distanceMeters != null ? <Text style={styles.line}>Distancia estimada: {Math.round(distanceMeters)} m</Text> : null}
-
-          {estimatedPrice != null ? (
-            <View style={styles.moneyBlock}>
-              <Text style={styles.moneyLabel}>Precio estimado</Text>
-              <Text style={styles.moneyMain}>{formatCop(estimatedPrice)}</Text>
-              {estimatedSecondary ? <Text style={styles.moneySecondary}>{estimatedSecondary}</Text> : null}
+                  </Pressable>
+                );
+              })}
             </View>
-          ) : null}
 
-          <SecondaryButton
-            label={estimating ? "Generando..." : "Generar estimado"}
-            onPress={() => void estimateNow()}
-            disabled={estimating || submitting || !pickup || !dropoff}
-          />
+            <Text style={styles.line}>Radio de búsqueda: 5 km</Text>
 
-          <View style={{ gap: 8, marginTop: 6 }}>
-            <Text style={styles.label}>Tu contraoferta</Text>
-            <TextInput
-              value={offeredPriceText}
-              onChangeText={setOfferedPriceText}
-              placeholder="Ej: 3000"
-              placeholderTextColor={colors.mutedText}
-              keyboardType="numeric"
-              style={styles.input}
+            {distanceMeters != null ? <Text style={styles.line}>Distancia estimada: {Math.round(distanceMeters)} m</Text> : null}
+
+            {estimatedPrice != null ? (
+              <View style={styles.moneyBlock}>
+                <Text style={styles.moneyLabel}>Precio estimado</Text>
+                <Text style={styles.moneyMain}>{formatCop(estimatedPrice)}</Text>
+                {estimatedSecondary ? <Text style={styles.moneySecondary}>{estimatedSecondary}</Text> : null}
+              </View>
+            ) : null}
+
+            <SecondaryButton
+              label={estimating ? "Generando..." : "Generar estimado"}
+              onPress={() => void estimateNow()}
+              disabled={estimating || submitting || !pickup || !dropoff}
             />
 
-            {offeredSecondary ? <Text style={styles.moneySecondary}>{offeredSecondary}</Text> : null}
+            <View style={{ gap: 8, marginTop: 6 }}>
+              <Text style={styles.label}>Tu contraoferta</Text>
+              <TextInput
+                value={offeredPriceText}
+                onChangeText={setOfferedPriceText}
+                placeholder="Ej: 3000"
+                placeholderTextColor={colors.mutedText}
+                keyboardType="numeric"
+                style={styles.input}
+              />
 
-            <View style={styles.row}>
-              <SecondaryButton
-                label="-100"
-                onPress={() => {
-                  const v = offeredPriceNumber ?? 0;
-                  const next = Math.max(0, v - 100);
-                  setOfferedPriceText(String(next));
-                }}
-                disabled={submitting}
-              />
-              <SecondaryButton
-                label="+100"
-                onPress={() => {
-                  const v = offeredPriceNumber ?? 0;
-                  const next = v + 100;
-                  setOfferedPriceText(String(next));
-                }}
-                disabled={submitting}
-              />
+              {offeredSecondary ? <Text style={styles.moneySecondary}>{offeredSecondary}</Text> : null}
+
+              <View style={styles.row}>
+                <SecondaryButton
+                  label="-100"
+                  onPress={() => {
+                    const v = offeredPriceNumber ?? 0;
+                    const next = Math.max(0, v - 100);
+                    setOfferedPriceText(String(next));
+                  }}
+                  disabled={submitting}
+                />
+                <SecondaryButton
+                  label="+100"
+                  onPress={() => {
+                    const v = offeredPriceNumber ?? 0;
+                    const next = v + 100;
+                    setOfferedPriceText(String(next));
+                  }}
+                  disabled={submitting}
+                />
+              </View>
             </View>
-          </View>
 
-          <PrimaryButton
-            label={submitting ? "Publicando..." : "Publicar contraoferta"}
-            onPress={() => void submit()}
-            disabled={
-              submitting ||
-              estimating ||
-              estimatedPrice == null ||
-              !pickup ||
-              !dropoff ||
-              offeredPriceNumber == null ||
-              offeredPriceNumber <= 0
-            }
-          />
-        </Card>
+            <PrimaryButton
+              label={submitting ? "Publicando..." : "Publicar contraoferta"}
+              onPress={() => void submit()}
+              disabled={
+                submitting ||
+                estimating ||
+                estimatedPrice == null ||
+                !pickup ||
+                !dropoff ||
+                offeredPriceNumber == null ||
+                offeredPriceNumber <= 0
+              }
+            />
+          </Card>
+        </ScrollView>
       </View>
     </Screen>
   );
@@ -493,6 +495,7 @@ const styles = StyleSheet.create({
   },
   mapWrap: {
     flex: 1,
+    minHeight: 220,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.border,
@@ -531,7 +534,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   sheet: {
+    maxHeight: "55%",
+    borderTopWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  sheetContent: {
     padding: 16,
+    paddingBottom: 28,
   },
   moneyBlock: {
     gap: 2,

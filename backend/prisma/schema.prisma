@@ -271,6 +271,7 @@ model RideRequest {
   matchedDriverId     String?
   matchedAt           DateTime?
   acceptedAt          DateTime?
+  driverArrivedNotifiedAt DateTime?
   assignedByAdmin     Boolean     @default(false)
   startedAt           DateTime?
   completedAt         DateTime?

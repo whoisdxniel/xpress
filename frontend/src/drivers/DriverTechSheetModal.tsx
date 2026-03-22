@@ -51,7 +51,12 @@ export function DriverTechSheetModal(props: { visible: boolean; onClose: () => v
               </Pressable>
             </View>
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.scroll}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
               {!driver ? (
                 <Card>
                   <Text style={{ color: colors.text, fontWeight: "900" }}>Sin datos</Text>
@@ -199,7 +204,8 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 120,
+    flexGrow: 1,
   },
   scrollView: {
     flex: 1,

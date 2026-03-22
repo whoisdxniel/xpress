@@ -257,12 +257,20 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
     return res.status(400).json({ message: "Ride not in ACCEPTED" });
   }
 
+  const now = new Date();
+  await prisma.rideRequest.update({
+    where: { id: ride.id },
+    data: { driverArrivedNotifiedAt: now },
+  });
+
+  const eventId = `DRIVER_ARRIVED:${ride.id}:${now.getTime()}`;
+
   const first = await sendPushToUser({
     userId: ride.passenger.userId,
     title: "Tu ejecutivo está en el lugar",
     body: "Tu ejecutivo ya llegó al punto de recogida.",
     soundName: "uber_llego",
-    data: { rideId: ride.id, type: "DRIVER_ARRIVED" },
+    data: { rideId: ride.id, type: "DRIVER_ARRIVED", eventId },
   });
 
   // Si no hay FCM en producción, mejor avisar explícitamente.
@@ -289,7 +297,7 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
     soundName: "uber_llego",
     times: 2,
     intervalMs: 1200,
-    data: { rideId: ride.id, type: "DRIVER_ARRIVED" },
+    data: { rideId: ride.id, type: "DRIVER_ARRIVED", eventId },
   });
 
   return res.status(200).json({ ok: true, push: first });

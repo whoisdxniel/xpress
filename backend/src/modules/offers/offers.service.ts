@@ -1,4 +1,4 @@
-import { OfferStatus, RideStatus, ServiceType } from "@prisma/client";
+import { DriverStatus, OfferStatus, RideStatus, ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { sendPushToAdmins, sendPushToUser } from "../notifications/notifications.service";
@@ -8,6 +8,12 @@ import { env } from "../../utils/env";
 import { effectiveBaseFare } from "../config/appConfig.service";
 import { ensureDriverHasMinCredits } from "../credits/credits.service";
 import { getFixedZonePriceForTrip } from "../zones/zones.service";
+
+const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
+
+function driverLocationFreshSince() {
+  return new Date(Date.now() - DRIVER_LOCATION_MAX_AGE_MS);
+}
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
@@ -211,6 +217,68 @@ export async function createOffer(params: {
       status: OfferStatus.OPEN,
     },
   });
+
+  // Push a choferes disponibles dentro del radio.
+  // Fire-and-forget: no bloquea la creación.
+  void (async () => {
+    try {
+      const pickup = { lat: Number(offer.pickupLat), lng: Number(offer.pickupLng) };
+      const radiusM = Math.max(250, Math.min(50_000, Number(offer.searchRadiusM ?? params.searchRadiusM ?? 5000)));
+      const radiusKm = radiusM / 1000;
+      const box = boundingBoxKm(pickup, radiusKm);
+      const freshSince = driverLocationFreshSince();
+
+      const drivers = await prisma.driverProfile.findMany({
+        where: {
+          status: DriverStatus.APPROVED,
+          isAvailable: true,
+          user: { is: { isActive: true } },
+          serviceType: offer.serviceTypeWanted,
+          location: {
+            is: {
+              updatedAt: { gte: freshSince },
+              lat: { gte: box.minLat, lte: box.maxLat },
+              lng: { gte: box.minLng, lte: box.maxLng },
+            },
+          },
+          matchedRides: {
+            none: {
+              status: { in: [RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS] },
+            },
+          },
+        },
+        select: {
+          userId: true,
+          location: { select: { lat: true, lng: true } },
+        },
+        take: 200,
+      });
+
+      const targets = drivers
+        .map((d) => {
+          const loc = d.location ? { lat: Number(d.location.lat), lng: Number(d.location.lng) } : null;
+          const dist = loc ? haversineDistanceMeters(pickup, loc) : Number.NaN;
+          return { userId: d.userId, distanceMeters: Math.round(dist) };
+        })
+        .filter((x) => Number.isFinite(x.distanceMeters) && x.distanceMeters <= radiusM)
+        .sort((a, b) => a.distanceMeters - b.distanceMeters)
+        .slice(0, 50);
+
+      await Promise.all(
+        targets.map((t) =>
+          sendPushToUser({
+            userId: t.userId,
+            title: "Contraoferta cerca",
+            body: "Hay una contraoferta disponible.",
+            soundName: "disponibles",
+            data: { offerId: offer.id, type: "OFFER_AVAILABLE", eventId: `OFFER_AVAILABLE:${offer.id}` },
+          }).catch(() => null)
+        )
+      );
+    } catch {
+      // silencioso
+    }
+  })();
 
   void sendPushToAdmins({
     title: "Nueva contraoferta",
@@ -433,7 +501,12 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
     title: "Contraoferta aceptada",
     body: "Un chofer se comprometió con tu oferta",
     soundName: "aceptar_servicio",
-    data: { rideId: created.ride.id, offerId: offer.id, type: "OFFER_COMMITTED" },
+    data: {
+      rideId: created.ride.id,
+      offerId: offer.id,
+      type: "OFFER_COMMITTED",
+      eventId: `OFFER_COMMITTED:${offer.id}:${driver.id}`,
+    },
   });
 
   void sendPushToAdmins({

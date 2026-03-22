@@ -31,7 +31,17 @@ import type { NearbyOfferItem } from "../offers/offers.types";
 import { serviceTypeLabel } from "../utils/serviceType";
 import { rideStatusLabel, roleLabel, userDisplayName } from "../utils/labels";
 import { ensureForegroundPermission, getCurrentCoords, getLastKnownCoords } from "../utils/location";
-import { clearActiveRideOffersRideId, getActiveRideOffersRideId, setActiveRideOffersRideId } from "../lib/storage";
+import {
+  clearActiveRideDriverArrivedNotifiedAt,
+  clearActiveRideOfferCommittedRideId,
+  clearActiveRideOffersRideId,
+  getActiveRideDriverArrivedNotifiedAt,
+  getActiveRideOfferCommittedRideId,
+  getActiveRideOffersRideId,
+  setActiveRideDriverArrivedNotifiedAt,
+  setActiveRideOfferCommittedRideId,
+  setActiveRideOffersRideId,
+} from "../lib/storage";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
 import { notifyAndPlayInAppOnce, playInAppSoundOnce } from "../notifications/incoming";
@@ -78,6 +88,9 @@ export function HomeScreen({ navigation }: Props) {
   const driverNearbyInitializedRef = useRef(false);
   const driverSeenNearbyRideIdsRef = useRef<Set<string>>(new Set());
 
+  const driverNearbyOffersInitializedRef = useRef(false);
+  const driverSeenNearbyOfferIdsRef = useRef<Set<string>>(new Set());
+
   const passengerRideOffersInitializedRef = useRef(false);
   const passengerSeenRideOfferDriverIdsRef = useRef<Set<string>>(new Set());
 
@@ -89,6 +102,9 @@ export function HomeScreen({ navigation }: Props) {
 
     driverNearbyInitializedRef.current = false;
     driverSeenNearbyRideIdsRef.current = new Set();
+
+    driverNearbyOffersInitializedRef.current = false;
+    driverSeenNearbyOfferIdsRef.current = new Set();
 
     passengerRideOffersInitializedRef.current = false;
     passengerSeenRideOfferDriverIdsRef.current = new Set();
@@ -199,6 +215,58 @@ export function HomeScreen({ navigation }: Props) {
         const status = String((res.ride as any)?.status ?? "");
         const matched = Boolean((res.ride as any)?.matchedDriverId);
 
+        // Catch-up best-effort: si falla (SecureStore/Notifs), no bloquea refreshRide.
+        try {
+          // Caso 4 (cliente): si el chofer presionó "notificar llegada" y el push no llegó
+          // (por ejemplo, prueba en un solo teléfono alternando sesión), hacemos catch-up.
+          const arrivedAtRaw = (res.ride as any)?.driverArrivedNotifiedAt;
+          const arrivedAt = arrivedAtRaw != null ? String(arrivedAtRaw) : "";
+
+          if (rideId && status === "ACCEPTED" && matched && arrivedAt) {
+            const lastArrivedAt = await getActiveRideDriverArrivedNotifiedAt();
+            if (lastArrivedAt !== arrivedAt) {
+              const ms = Date.parse(arrivedAt);
+              const suffix = Number.isFinite(ms) ? String(ms) : arrivedAt;
+              await notifyAndPlayInAppOnce({
+                eventId: `DRIVER_ARRIVED:${rideId}:${suffix}`,
+                soundName: "uber_llego",
+                title: "Tu ejecutivo está en el lugar",
+                body: "Tu ejecutivo ya llegó al punto de recogida.",
+                data: { rideId, type: "CATCHUP_DRIVER_ARRIVED" },
+              });
+              await setActiveRideDriverArrivedNotifiedAt(arrivedAt);
+            }
+          }
+
+          if (!rideId || !arrivedAt || status !== "ACCEPTED" || !matched) {
+            void clearActiveRideDriverArrivedNotifiedAt();
+          }
+
+          // Contraofertas (cliente): si un chofer se comprometió y el push no llegó,
+          // hacemos catch-up con el mismo sonido del caso 2.
+          const offerIdRaw = (res.ride as any)?.offer?.id;
+          const offerId = offerIdRaw != null ? String(offerIdRaw) : "";
+          if (rideId && offerId && status === "ACCEPTED" && matched) {
+            const lastCommittedRideId = await getActiveRideOfferCommittedRideId();
+            if (lastCommittedRideId !== rideId) {
+              await notifyAndPlayInAppOnce({
+                eventId: `OFFER_COMMITTED:${offerId}:${rideId}`,
+                soundName: "aceptar_servicio",
+                title: "Contraoferta aceptada",
+                body: "Un chofer se comprometió con tu oferta.",
+                data: { rideId, offerId, type: "CATCHUP_OFFER_COMMITTED" },
+              });
+              await setActiveRideOfferCommittedRideId(rideId);
+            }
+          }
+
+          if (!rideId || !offerId || status !== "ACCEPTED" || !matched) {
+            void clearActiveRideOfferCommittedRideId();
+          }
+        } catch {
+          // ignore
+        }
+
         if (rideId && status === "OPEN" && !matched) {
           // best-effort: persistimos y seteamos estado local
           void setActiveRideOffersRideId(rideId);
@@ -209,6 +277,11 @@ export function HomeScreen({ navigation }: Props) {
           // Si ya no aplica, limpiamos el puntero.
           void clearActiveRideOffersRideId();
           setOffersRideId(null);
+        }
+
+        if (!rideId) {
+          void clearActiveRideDriverArrivedNotifiedAt();
+          void clearActiveRideOfferCommittedRideId();
         }
       }
     } catch (e) {
@@ -522,6 +595,41 @@ export function HomeScreen({ navigation }: Props) {
       void playInAppSoundOnce({ eventId: `RIDE_AVAILABLE:${id}`, soundName: "disponibles" });
     }
   }, [nearbyRequests, isFocused, role, token]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!token) return;
+    if (role !== "DRIVER") return;
+
+    const items = Array.isArray(nearbyOffers) ? nearbyOffers : [];
+
+    // Primera carga: marcamos sin sonar.
+    if (!driverNearbyOffersInitializedRef.current) {
+      for (const it of items) {
+        const idRaw = (it as any)?.offerId ?? (it as any)?.id;
+        const id = idRaw != null ? String(idRaw) : "";
+        if (id) driverSeenNearbyOfferIdsRef.current.add(id);
+      }
+      driverNearbyOffersInitializedRef.current = true;
+      return;
+    }
+
+    const newIds: string[] = [];
+    for (const it of items) {
+      const idRaw = (it as any)?.offerId ?? (it as any)?.id;
+      const id = idRaw != null ? String(idRaw) : "";
+      if (!id) continue;
+      if (driverSeenNearbyOfferIdsRef.current.has(id)) continue;
+      driverSeenNearbyOfferIdsRef.current.add(id);
+      newIds.push(id);
+    }
+
+    if (newIds.length === 0) return;
+
+    for (const id of newIds) {
+      void playInAppSoundOnce({ eventId: `OFFER_AVAILABLE:${id}`, soundName: "disponibles" });
+    }
+  }, [nearbyOffers, isFocused, role, token]);
 
 
   useEffect(() => {

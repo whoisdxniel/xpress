@@ -94,43 +94,74 @@ export async function sendPushToUser(params: {
   if (tokens.length === 0) return { ok: true as const, sent: 0, failed: 0 };
 
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
-  const channelId = soundName ? normalizeChannelId({ soundName, channelId: params.channelId }) : undefined;
-  const androidChannelId = channelId || normalizeAnyChannelId(params.channelId) || channelIdForSound("disponibles");
+  const normalizedChannelId = soundName ? normalizeChannelId({ soundName, channelId: params.channelId }) : undefined;
 
-  const data: Record<string, string> | undefined = soundName
+  // En Android usamos un canal único con sonido default del teléfono.
+  // El sonido MP3 específico se reproduce desde la app (TaskManager) al recibir el push.
+  const androidChannelId = "xpress_default_v1";
+
+  const baseData: Record<string, string> | undefined = soundName
     ? {
         ...(params.data ?? {}),
         soundName,
-        ...(channelId ? { channelId } : null),
+        ...(normalizedChannelId ? { channelId: normalizedChannelId } : null),
       }
     : params.data;
 
-  const res = await messaging.sendEachForMulticast({
-    tokens: tokens.map((t) => t.token),
-    notification: { title: params.title, body: params.body },
-    data,
-    android: {
-      priority: "high",
-      notification: {
-        channelId: androidChannelId,
-        ...(soundName ? { sound: soundName } : null),
-      },
-    },
-    apns: soundName
-      ? {
-          headers: {
-            "apns-priority": "10",
-          },
-          payload: {
-            aps: {
-              sound: `${soundName}.mp3`,
-            },
-          },
-        }
-      : undefined,
-  });
+  const androidTokens = tokens.filter((t) => t.platform === "ANDROID").map((t) => t.token);
+  const iosTokens = tokens.filter((t) => t.platform === "IOS").map((t) => t.token);
 
-  return { ok: true as const, sent: res.successCount, failed: res.failureCount };
+  let sent = 0;
+  let failed = 0;
+
+  // ANDROID: data-only (para que onMessageReceived corra en background) + payload Expo (title/message/sound/channelId)
+  if (androidTokens.length > 0) {
+    const androidData: Record<string, string> = {
+      ...(baseData ?? {}),
+      title: params.title,
+      message: params.body,
+      channelId: androidChannelId,
+      // Nota: NO enviamos `sound` aquí para que el sistema use el sonido default del teléfono.
+      // El MP3 específico se reproduce desde JS leyendo `soundName`.
+    };
+
+    const resAndroid = await messaging.sendEachForMulticast({
+      tokens: androidTokens,
+      data: androidData,
+      android: {
+        priority: "high",
+      },
+    });
+
+    sent += resAndroid.successCount;
+    failed += resAndroid.failureCount;
+  }
+
+  // IOS: mantenemos notificación/APNs estándar.
+  if (iosTokens.length > 0) {
+    const resIos = await messaging.sendEachForMulticast({
+      tokens: iosTokens,
+      notification: { title: params.title, body: params.body },
+      data: baseData,
+      apns: soundName
+        ? {
+            headers: {
+              "apns-priority": "10",
+            },
+            payload: {
+              aps: {
+                sound: `${soundName}.mp3`,
+              },
+            },
+          }
+        : undefined,
+    });
+
+    sent += resIos.successCount;
+    failed += resIos.failureCount;
+  }
+
+  return { ok: true as const, sent, failed };
 }
 
 export function sendPushToUserBurst(params: {

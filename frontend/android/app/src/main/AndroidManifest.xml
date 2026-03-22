@@ -21,7 +21,7 @@
 
         <!-- Si un push llega sin channelId, Firebase usa un canal fallback ("Miscellaneous").
           Definimos un canal default controlado por la app para que use sonido custom. -->
-        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="tienes_servicio_v3"/>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="xpress_default_v1"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

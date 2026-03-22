@@ -1,10 +1,15 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import { channelIdForSound, normalizeChannelId, type SoundName } from "./channels";
+import type { SoundName } from "./channels";
+import { playNotificationSound } from "./soundPlayer";
+import { BACKGROUND_NOTIFICATION_TASK } from "./backgroundSoundTask";
 
 let handlerInstalled = false;
-let foregroundFixInstalled = false;
+let inAppSoundInstalled = false;
+let backgroundTaskRegistered = false;
+
+export const ANDROID_DEFAULT_CHANNEL_ID = "xpress_default_v1";
 
 function isExpoGo() {
   const executionEnvironment = (Constants as any)?.executionEnvironment;
@@ -21,59 +26,54 @@ export function setupNotificationHandlerOnce() {
 
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
-      const data: any = (notification.request?.content?.data ?? {}) as any;
-      const soundName = typeof data.soundName === "string" ? data.soundName.trim() : "";
-      const isLocalFix = String(data.__localSoundFix ?? "") === "1";
-
-      // Si viene sonido custom en data y NO es la notificación local que presentamos,
-      // suprimimos el banner/sound del remoto para evitar duplicado.
-      const interceptRemote = !!soundName && !isLocalFix;
-
       return {
-        shouldShowAlert: !interceptRemote,
-        shouldShowBanner: !interceptRemote,
-        shouldShowList: !interceptRemote,
-        shouldPlaySound: !interceptRemote,
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
         shouldSetBadge: false,
       };
     },
   });
 }
 
-export function setupForegroundSoundFixOnce() {
-  if (foregroundFixInstalled) return;
-  foregroundFixInstalled = true;
+export function setupInAppSoundOnce() {
+  if (inAppSoundInstalled) return;
+  inAppSoundInstalled = true;
 
+  // Cuando la app está viva (foreground o en algunos casos background),
+  // reproducimos el sonido custom además del sonido del sistema.
   Notifications.addNotificationReceivedListener((notification) => {
     try {
-      const content = notification.request?.content;
-      const data: any = (content?.data ?? {}) as any;
-      if (String(data.__localSoundFix ?? "") === "1") return;
+      const data: any = (notification.request?.content?.data ?? {}) as any;
+      const raw = typeof data.soundName === "string" ? data.soundName.trim() : "";
+      if (!raw) return;
 
-      const soundName = typeof data.soundName === "string" ? data.soundName.trim() : "";
-      if (!soundName) return;
+      const name = raw as SoundName;
+      if (!(["tienes_servicio", "aceptar_servicio", "uber_llego", "disponibles"] as const).includes(name as any)) {
+        return;
+      }
 
-      const normalizedSound = soundName as SoundName;
-      const channelId = normalizeChannelId(data.channelId, normalizedSound) || channelIdForSound(normalizedSound);
-
-      const nextData: Record<string, any> = { ...data, __localSoundFix: "1" };
-      delete (nextData as any).soundName;
-      delete (nextData as any).channelId;
-
-      void Notifications.scheduleNotificationAsync({
-        content: {
-          title: content?.title ?? "",
-          body: content?.body ?? "",
-          data: nextData,
-          ...(Platform.OS === "android" ? { channelId } : null),
-          ...(Platform.OS === "ios" ? { sound: `${normalizedSound}.mp3` } : null),
-        },
-        trigger: null,
-      });
+      void playNotificationSound(name);
     } catch {
       // silencioso
     }
   });
+}
+
+export async function registerBackgroundNotificationTaskOnce() {
+  if (backgroundTaskRegistered) return;
+  backgroundTaskRegistered = true;
+
+  // Desde Expo SDK 53, Expo Go no soporta push remoto.
+  if (Platform.OS !== "android" && Platform.OS !== "ios") return;
+  if (isExpoGo()) return;
+
+  try {
+    await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+  } catch {
+    // Si TaskManager no está disponible en algún build, no rompemos la app.
+  }
 }
 
 export async function ensureAndroidChannels() {
@@ -87,8 +87,8 @@ export async function ensureAndroidChannels() {
     }
   }
 
-  // Limpieza: evita que se acumulen categorías duplicadas (MIUI muestra todas).
-  // Dejamos sólo canales v3 + el fallback real de FCM.
+  // Limpieza: evita que MIUI acumule categorías duplicadas.
+  // Ahora usamos 1 solo canal default y el sonido custom lo reproducimos en la app.
   await Promise.all(
     [
       // legacy
@@ -101,86 +101,25 @@ export async function ensureAndroidChannels() {
       "aceptar_servicio_v2",
       "uber_llego_v2",
       "disponibles_v2",
+      // v3
+      "tienes_servicio_v3",
+      "aceptar_servicio_v3",
+      "uber_llego_v3",
+      "disponibles_v3",
       // fallbacks anteriores que creamos
       "xpress_fallback_v1",
+      // canal default
+      ANDROID_DEFAULT_CHANNEL_ID,
     ].map(safeDeleteChannel)
   );
 
-  async function ensureChannel(params: {
-    id: string;
-    name: string;
-    sound: SoundName;
-  }) {
-    const desiredSound = params.sound;
-
-    const isDefaultish = (raw: unknown) => {
-      const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-      return !s || s === "default" || s === "none";
-    };
-
-    const matchesDesired = (raw: unknown) => {
-      const s = typeof raw === "string" ? raw.trim() : "";
-      if (!s) return false;
-      if (s === desiredSound) return true;
-      if (s === `${desiredSound}.mp3`) return true;
-      return false;
-    };
-
-    // Si el canal ya existe pero su sonido quedó en default/none, Android no permite cambiarlo.
-    // En ese caso, borramos y recreamos.
-    try {
-      const existing = await Notifications.getNotificationChannelAsync(params.id);
-      const existingSound = (existing as any)?.sound;
-      if (existing && !matchesDesired(existingSound)) {
-        // Si está en default/none o es otro sonido, borramos y recreamos.
-        await safeDeleteChannel(params.id);
-      }
-    } catch {
-      // best-effort
-    }
-
-    const createWithSound = async (sound: string) => {
-      await Notifications.setNotificationChannelAsync(params.id, {
-        name: params.name,
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        audioAttributes: {
-          usage: Notifications.AndroidAudioUsage.NOTIFICATION,
-          contentType: (Notifications as any).AndroidAudioContentType?.SONIFICATION,
-        },
-        sound,
-      });
-    };
-
-    // 1) Intento estándar (sin extensión)
-    await createWithSound(desiredSound);
-
-    // 2) Verificación + fallback (algunos OEM requieren "archivo.mp3")
-    try {
-      const after = await Notifications.getNotificationChannelAsync(params.id);
-      const afterSound = (after as any)?.sound;
-      if (after && (isDefaultish(afterSound) || !matchesDesired(afterSound))) {
-        await safeDeleteChannel(params.id);
-        await createWithSound(`${desiredSound}.mp3`);
-      }
-    } catch {
-      // best-effort
-    }
-  }
-
-  // Fallback real de Firebase cuando llega push sin channelId. Algunos equipos lo muestran como "Miscellaneous".
-  // Lo reparamos para que, si por alguna razón se usa, NO suene el default del teléfono.
-  await ensureChannel({
-    id: "fcm_fallback_notification_channel",
-    name: "Xpress (fallback)",
-    sound: "tienes_servicio",
+  // Un único canal para que el sistema use el sonido default del teléfono.
+  // (El MP3 específico se reproduce desde JS en foreground/background.)
+  await Notifications.setNotificationChannelAsync(ANDROID_DEFAULT_CHANNEL_ID, {
+    name: "Xpress",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
   });
-
-  // Canales v3 (únicos) por sonido.
-  await ensureChannel({ id: channelIdForSound("tienes_servicio"), name: "Servicios por aceptar", sound: "tienes_servicio" });
-  await ensureChannel({ id: channelIdForSound("aceptar_servicio"), name: "Servicio aceptado", sound: "aceptar_servicio" });
-  await ensureChannel({ id: channelIdForSound("uber_llego"), name: "Ejecutivo llegó", sound: "uber_llego" });
-  await ensureChannel({ id: channelIdForSound("disponibles"), name: "Solicitudes cercanas", sound: "disponibles" });
 }
 
 export async function getNativePushToken() {

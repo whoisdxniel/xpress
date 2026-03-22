@@ -1,6 +1,6 @@
 export type SoundName = "tienes_servicio" | "aceptar_servicio" | "uber_llego" | "disponibles";
 
-const CHANNEL_VERSION = "v2";
+const CHANNEL_VERSION = "v3";
 
 export function channelIdForSound(soundName: SoundName) {
   return `${soundName}_${CHANNEL_VERSION}`;
@@ -15,6 +15,9 @@ export function normalizeChannelId(input: unknown, soundName?: SoundName | null)
 
   // Si ya viene versionado, lo dejamos.
   if (raw.endsWith(`_${CHANNEL_VERSION}`)) return raw;
+
+  // Si viene de una versión anterior, migramos al id actual.
+  if (raw.endsWith("_v2") && soundName) return channelIdForSound(soundName);
 
   // Si es uno de los conocidos antiguos, lo movemos a v2.
   if (raw === "tienes_servicio") return channelIdForSound("tienes_servicio");

@@ -4,7 +4,7 @@ import { getFCMOrNull } from "../../integrations/fcm";
 
 let warnedFcmNotConfigured = false;
 
-const CHANNEL_VERSION_SUFFIX = "_v2";
+const CHANNEL_VERSION_SUFFIX = "_v3";
 
 function channelIdForSound(soundName: string) {
   return `${soundName}${CHANNEL_VERSION_SUFFIX}`;
@@ -22,6 +22,9 @@ function normalizeChannelId(params: { soundName?: string; channelId?: string }) 
 
   // Si ya viene versionado, lo dejamos.
   if (raw.endsWith(CHANNEL_VERSION_SUFFIX)) return raw;
+
+  // Si viene de una versión anterior, migramos al id actual.
+  if (raw.endsWith("_v2")) return channelIdForSound(soundName);
 
   // Si es uno de los ids antiguos conocidos, migramos a v2.
   if (raw === "tienes_servicio") return channelIdForSound("tienes_servicio");

@@ -87,8 +87,19 @@ export async function ensureAndroidChannels() {
     }
   }
 
-  // Limpia ids legacy (sin versionar) por si quedaron creados con sonido default.
-  await Promise.all(["tienes_servicio", "aceptar_servicio", "uber_llego", "disponibles"].map(safeDeleteChannel));
+  // Limpia ids legacy (sin versionar) y versionados anteriores por si quedaron con sonido default.
+  await Promise.all(
+    [
+      "tienes_servicio",
+      "aceptar_servicio",
+      "uber_llego",
+      "disponibles",
+      "tienes_servicio_v2",
+      "aceptar_servicio_v2",
+      "uber_llego_v2",
+      "disponibles_v2",
+    ].map(safeDeleteChannel)
+  );
 
   async function ensureChannel(params: {
     id: string;
@@ -97,28 +108,59 @@ export async function ensureAndroidChannels() {
   }) {
     const desiredSound = params.sound;
 
+    const isDefaultish = (raw: unknown) => {
+      const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+      return !s || s === "default" || s === "none";
+    };
+
+    const matchesDesired = (raw: unknown) => {
+      const s = typeof raw === "string" ? raw.trim() : "";
+      if (!s) return false;
+      if (s === desiredSound) return true;
+      if (s === `${desiredSound}.mp3`) return true;
+      return false;
+    };
+
     // Si el canal ya existe pero su sonido quedó en default/none, Android no permite cambiarlo.
     // En ese caso, borramos y recreamos.
     try {
       const existing = await Notifications.getNotificationChannelAsync(params.id);
-      const existingSound = typeof (existing as any)?.sound === "string" ? String((existing as any).sound).trim() : "";
-      if (existing && existingSound && existingSound !== desiredSound) {
-        await safeDeleteChannel(params.id);
-      }
-      if (existing && !existingSound) {
+      const existingSound = (existing as any)?.sound;
+      if (existing && !matchesDesired(existingSound)) {
+        // Si está en default/none o es otro sonido, borramos y recreamos.
         await safeDeleteChannel(params.id);
       }
     } catch {
       // best-effort
     }
 
-    await Notifications.setNotificationChannelAsync(params.id, {
-      name: params.name,
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION },
-      sound: desiredSound,
-    });
+    const createWithSound = async (sound: string) => {
+      await Notifications.setNotificationChannelAsync(params.id, {
+        name: params.name,
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        audioAttributes: {
+          usage: Notifications.AndroidAudioUsage.NOTIFICATION,
+          contentType: (Notifications as any).AndroidAudioContentType?.SONIFICATION,
+        },
+        sound,
+      });
+    };
+
+    // 1) Intento estándar (sin extensión)
+    await createWithSound(desiredSound);
+
+    // 2) Verificación + fallback (algunos OEM requieren "archivo.mp3")
+    try {
+      const after = await Notifications.getNotificationChannelAsync(params.id);
+      const afterSound = (after as any)?.sound;
+      if (after && (isDefaultish(afterSound) || !matchesDesired(afterSound))) {
+        await safeDeleteChannel(params.id);
+        await createWithSound(`${desiredSound}.mp3`);
+      }
+    } catch {
+      // best-effort
+    }
   }
 
   // Canal por sonido, para que FCM pueda elegir channelId.

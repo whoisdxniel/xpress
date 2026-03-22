@@ -298,10 +298,15 @@ export function HomeScreen({ navigation }: Props) {
 
     const rideId = String(attentionRide.id);
     const status = String(attentionRide.status ?? "");
+    const isOfferRide = Boolean((attentionRide as any)?.offer);
 
     if (role === "DRIVER") {
       // Catch-up: el chofer entra y ya tiene un servicio por aceptar.
-      if ((status === "ASSIGNED" || status === "MATCHED" || status === "ACCEPTED") && driverPendingRideNotifiedRef.current !== rideId) {
+      if (
+        !isOfferRide &&
+        (status === "ASSIGNED" || status === "MATCHED" || status === "ACCEPTED") &&
+        driverPendingRideNotifiedRef.current !== rideId
+      ) {
         driverPendingRideNotifiedRef.current = rideId;
         void notifyCatchup({
           title: "Nuevo servicio",

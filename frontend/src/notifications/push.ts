@@ -6,6 +6,7 @@ import {
   ensureAndroidSilentChannel,
   handleIncomingSoundEventFromNotification,
   ANDROID_SILENT_CHANNEL_ID,
+  ensureAndroidSoundChannels,
 } from "./incoming";
 
 let handlerInstalled = false;
@@ -103,6 +104,7 @@ export async function ensureAndroidChannels() {
   );
 
   await ensureAndroidSilentChannel();
+  await ensureAndroidSoundChannels();
 
   // Compat: si por alguna razón otra parte agenda usando el id antiguo, lo migramos.
   try {

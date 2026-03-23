@@ -135,6 +135,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const driversLoadedRef = useRef(false);
   const locationSeqRef = useRef(0);
   const driversSeqRef = useRef(0);
+  const requestingRef = useRef(false);
 
   const userInteractedRef = useRef(false);
   const shouldRecenterRef = useRef(false);
@@ -359,15 +360,32 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
   async function requestAvailableExecutives() {
     if (!token || !center) return;
+    if (requestingRef.current) return;
     if (!dropoff) {
       setError("Tocá el mapa para elegir el destino");
       return;
     }
+    requestingRef.current = true;
     setRequesting(true);
     setError(null);
 
     try {
       const addr = await ensureAddresses({ pickup: center, dropoff });
+
+      // Validación previa de SC / zona fija.
+      // Si el backend devuelve NEGOTIATE_WHATSAPP, no creamos ride.
+      const est = await apiEstimateOffer(token, {
+        serviceTypeWanted: wantedType,
+        pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
+        dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
+      });
+
+      setEstimate({
+        distanceMeters: est.distanceMeters,
+        estimatedPrice: est.estimatedPrice,
+        routePath: Array.isArray(est.routePath) && est.routePath.length >= 2 ? downsampleRoutePath(est.routePath as any, 800) : null,
+      });
+
       const created = await apiCreateRide(token, {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
@@ -390,6 +408,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       setError(e instanceof Error ? e.message : "No se pudo solicitar el ejecutivo");
     } finally {
       setRequesting(false);
+      requestingRef.current = false;
     }
   }
 
@@ -596,7 +615,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         <PrimaryButton
           label={requesting ? "Solicitando..." : "Solicitar ejecutivos disponibles"}
           onPress={() => void requestAvailableExecutives()}
-          disabled={requesting || loadingLocation}
+          disabled={requesting || loadingLocation || !dropoff}
         />
       </View>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
@@ -237,9 +237,10 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
       </View>
 
       <View style={styles.sheet}>
-        <Card style={{ gap: 10 }}>
-          {offer ? (
-            <>
+        <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <Card style={{ gap: 10 }}>
+            {offer ? (
+              <>
               <View style={styles.titleRow}>
                 <Ionicons name="car-outline" size={18} color={colors.gold} />
                 <Text style={styles.title}>Oferta {serviceTypeLabel(offer.serviceTypeWanted)}</Text>
@@ -313,11 +314,12 @@ export function DriverOfferDetailsScreen({ route, navigation }: Props) {
               </View>
 
               <PrimaryButton label={committing ? "Comprometiéndose..." : "Comprometerse"} onPress={() => void commit()} disabled={committing} />
-            </>
-          ) : (
-            <Text style={styles.line}>Sin datos.</Text>
-          )}
-        </Card>
+              </>
+            ) : (
+              <Text style={styles.line}>Sin datos.</Text>
+            )}
+          </Card>
+        </ScrollView>
       </View>
     </Screen>
   );
@@ -392,7 +394,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   sheet: {
+    maxHeight: "55%",
+    borderTopWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  sheetContent: {
     padding: 16,
+    paddingBottom: 28,
   },
   titleRow: {
     flexDirection: "row",

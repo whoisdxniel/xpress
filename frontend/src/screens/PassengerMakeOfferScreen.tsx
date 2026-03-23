@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AppMap, type AppMapMarker, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
 
@@ -18,6 +18,9 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 import { getDrivingRoute } from "../utils/directions";
 import { ensureForegroundPermission, getCurrentCoords, getFastCoords, readCachedCoords } from "../utils/location";
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
+import { ApiError } from "../lib/api";
+import { apiGetPublicZones, type PublicZone } from "../config/config.api";
+import { buildWhatsappLink } from "../utils/whatsapp";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerMakeOffer">;
 
@@ -35,6 +38,25 @@ function toLatLng(p: MapPoint): LatLng {
 export function PassengerMakeOfferScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
+
+  const [zones, setZones] = useState<PublicZone[]>([]);
+
+  const operatorPhone = useMemo(() => {
+    const fromConfig = auth.appConfig?.zoeWhatsappPhone;
+    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
+    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+  }, [auth.appConfig?.zoeWhatsappPhone]);
+
+  const operatorLink = useMemo(() => {
+    return buildWhatsappLink({
+      phone: operatorPhone,
+      text: "Hola, necesito ayuda de ZOE.",
+    });
+  }, [operatorPhone]);
+
+  async function openOperator() {
+    await Linking.openURL(operatorLink);
+  }
 
   const [pickup, setPickup] = useState<{ lat: number; lng: number } | null>(null);
   const [dropoff, setDropoff] = useState<{ lat: number; lng: number } | null>(null);
@@ -132,6 +154,25 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     if (pickup) return;
     void refreshPickup({ showError: true, animate: true });
   }, [token, pickup]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await apiGetPublicZones();
+        if (!alive) return;
+        setZones(Array.isArray(res.zones) ? res.zones : []);
+      } catch {
+        if (!alive) return;
+        setZones([]);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   function requestRecenter() {
     userInteractedRef.current = false;
@@ -231,6 +272,14 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setDistanceMeters(res.distanceMeters);
       setOfferedPriceText(String(res.estimatedPrice));
     } catch (e) {
+      if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
+        try {
+          await openOperator();
+          return;
+        } catch {
+          // si falla abrir WhatsApp, seguimos a mensaje
+        }
+      }
       setError(e instanceof Error ? e.message : "No se pudo estimar el precio");
     } finally {
       setEstimating(false);
@@ -239,6 +288,30 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
   async function submit() {
     if (!token || !pickup || !dropoff) return;
+
+    // Validación previa: evita publicar ofertas fuera de SC / sin fijo (debe ir a WhatsApp).
+    try {
+      await apiEstimateOffer(token, {
+        serviceTypeWanted,
+        pickup,
+        dropoff,
+        wantsAC: false,
+        wantsTrunk: false,
+        wantsPets: false,
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
+        try {
+          await openOperator();
+          return;
+        } catch {
+          // fallback al mensaje
+        }
+      }
+      setError(e instanceof Error ? e.message : "No se pudo validar la zona/tarifa");
+      return;
+    }
+
     if (estimatedPrice == null) {
       Alert.alert("Falta estimado", "Primero generá el estimado para poder publicar la contraoferta.");
       return;
@@ -313,10 +386,22 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
           pitchEnabled={false}
           scrollEnabled
           zoomEnabled
+          polygons={zones
+            .filter((z) => z && z.id && (z as any).geojson)
+            .map((z) => ({
+              id: z.id,
+              geojson: (z as any).geojson,
+              fillOpacity: z.isHub ? 0.16 : 0.1,
+              lineOpacity: z.isHub ? 0.7 : 0.45,
+              lineWidth: z.isHub ? 2.5 : 2,
+            }))}
           onUserGesture={() => {
             userInteractedRef.current = true;
           }}
-          onPress={(c) => setDropoff({ lat: c.latitude, lng: c.longitude })}
+          onPress={(c) => {
+            setDropoff({ lat: c.latitude, lng: c.longitude });
+            setError(null);
+          }}
           onMapReady={() => {
             if (fitCoords) {
               mapRef.current?.fitToCoordinates(fitCoords, { edgePadding: { top: 70, right: 70, bottom: 70, left: 70 }, animated: false });

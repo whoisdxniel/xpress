@@ -5,6 +5,10 @@ import { playNotificationSound } from "./soundPlayer";
 
 export const ANDROID_SILENT_CHANNEL_ID = "xpress_silent_v1";
 
+export function androidSoundChannelId(soundName: SoundName) {
+  return `xpress_sound_${soundName}_v1`;
+}
+
 const LOCAL_MARKER_KEY = "__xpress_local";
 const RECENT_TTL_MS = 30_000;
 const MAX_RECENT = 200;
@@ -58,6 +62,32 @@ export async function ensureAndroidSilentChannel() {
   }
 }
 
+export async function ensureAndroidSoundChannels() {
+  if (Platform.OS !== "android") return;
+  // Android usa el nombre del recurso en res/raw (sin extensión): R.raw.<soundFile>
+  const items: Array<{ id: string; name: string; soundFile: string }> = [
+    { id: androidSoundChannelId("disponibles"), name: "Xpress: disponibles", soundFile: "disponibles" },
+    { id: androidSoundChannelId("aceptar_servicio"), name: "Xpress: aceptar servicio", soundFile: "aceptar_servicio" },
+    { id: androidSoundChannelId("tienes_servicio"), name: "Xpress: tienes servicio", soundFile: "tienes_servicio" },
+    { id: androidSoundChannelId("uber_llego"), name: "Xpress: uber llegó", soundFile: "uber_llego" },
+  ];
+
+  await Promise.all(
+    items.map(async (c) => {
+      try {
+        await Notifications.setNotificationChannelAsync(c.id, {
+          name: c.name,
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          sound: c.soundFile,
+        });
+      } catch {
+        // best-effort
+      }
+    })
+  );
+}
+
 function extractFromData(data: any): {
   eventId: string | null;
   soundName: SoundName;
@@ -95,7 +125,34 @@ export async function presentSilentLocalNotification(params: {
         body,
         data: ensureLocalMarker(params.data),
       },
-      trigger: { channelId: ANDROID_SILENT_CHANNEL_ID },
+      // Nota: este SDK no tipa `content.android.channelId`, así que forzamos el canal vía trigger.
+      // 1s es suficiente para que Android use el canal correcto (y se sienta "instantáneo").
+      trigger: { seconds: 1, channelId: ANDROID_SILENT_CHANNEL_ID } as any,
+    });
+  } catch {
+    // best-effort
+  }
+}
+
+export async function presentSoundLocalNotification(params: {
+  soundName: SoundName;
+  title?: string;
+  body?: string;
+  data?: Record<string, any>;
+}) {
+  if (Platform.OS !== "android") return;
+  const title = params.title?.trim() ? params.title.trim() : undefined;
+  const body = params.body?.trim() ? params.body.trim() : undefined;
+  if (!title && !body) return;
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: ensureLocalMarker({ ...(params.data ?? {}), soundName: params.soundName }),
+      },
+      trigger: { seconds: 1, channelId: androidSoundChannelId(params.soundName) } as any,
     });
   } catch {
     // best-effort
@@ -107,16 +164,14 @@ export async function handleIncomingSoundEventFromTask(taskData: any) {
   if (!extracted) return;
   if (!shouldProcessEventId(extracted.eventId)) return;
 
-  // En Android: las push remotas llegan como data-only, así que la notificación visible
-  // la crea la app (siempre silenciosa). Esto mantiene las notificaciones “vivas”
-  // con la app activa o minimizada.
-  await presentSilentLocalNotification({
+  // Background/minimizada: en Android el JS no puede garantizar audio in-app.
+  // En su lugar, usamos un canal Android con MP3 nativo por evento.
+  await presentSoundLocalNotification({
+    soundName: extracted.soundName,
     title: extracted.title,
     body: extracted.body,
     data: extracted.data,
   });
-
-  await playNotificationSound(extracted.soundName);
 }
 
 export async function handleIncomingSoundEventFromNotification(notification: Notifications.Notification) {

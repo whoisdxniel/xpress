@@ -25,6 +25,10 @@ frontend/GoogleService-Info.plist
 # Firebase Admin SDK (service account JSON)
 *firebase-adminsdk*.json
 
+# Android keystores (nunca commitear)
+*.keystore
+*.jks
+
 # Expo prebuild (generado)
 frontend/android/
 frontend/ios/

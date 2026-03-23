@@ -181,7 +181,20 @@ export async function handleIncomingSoundEventFromTask(taskData: any) {
 
 export async function handleIncomingSoundEventFromNotification(notification: Notifications.Notification) {
   const content: any = notification?.request?.content ?? {};
-  const extracted = extractFromData({ ...(content?.data ?? {}), title: content?.title, message: content?.body });
+  const trigger: any = notification?.request?.trigger ?? {};
+
+  // En Android, cuando el push incluye `notification`, Expo puede dejar `content.data` vacío.
+  // En ese caso, la data real viene en `trigger.remoteMessage.data`.
+  const remoteData: any = trigger?.remoteMessage?.data ?? trigger?.data ?? null;
+
+  const merged = {
+    ...(remoteData && typeof remoteData === "object" ? remoteData : null),
+    ...(content?.data && typeof content.data === "object" ? content.data : null),
+    title: content?.title,
+    message: content?.body,
+  };
+
+  const extracted = extractFromData(merged);
   if (!extracted) return;
   if (!shouldProcessEventId(extracted.eventId)) return;
 

@@ -46,6 +46,12 @@ export async function sendPushToUser(params: {
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
   const eventId = params.data?.eventId?.trim() ? params.data.eventId.trim() : makeEventId();
 
+  function androidChannelIdForSound(soundName: string | undefined) {
+    // Debe matchear los IDs creados en el frontend (notifications/incoming.ts)
+    if (soundName && soundName.trim()) return `xpress_sound_${soundName.trim()}_v3`;
+    return "xpress_silent_v3";
+  }
+
   const baseData: Record<string, string> = {
     ...(params.data ?? {}),
     eventId,
@@ -58,20 +64,23 @@ export async function sendPushToUser(params: {
   let sent = 0;
   let failed = 0;
 
-  // ANDROID: data-only (para que onMessageReceived corra en background).
-  // La app reproduce el MP3 leyendo `soundName` y crea la notificación local silenciosa.
+  // ANDROID: notification + channelId.
+  // - Foreground: Expo Notifications handler evita sonido del sistema y la app reproduce el MP3.
+  // - Background: Android muestra la notificación y reproduce el MP3 vía canal nativo.
   if (androidTokens.length > 0) {
-    const androidData: Record<string, string> = {
-      ...baseData,
-      title: params.title,
-      message: params.body,
-    };
+    const androidData: Record<string, string> = { ...baseData };
+
+    const channelId = androidChannelIdForSound(soundName);
 
     const resAndroid = await messaging.sendEachForMulticast({
       tokens: androidTokens,
+      notification: { title: params.title, body: params.body },
       data: androidData,
       android: {
         priority: "high",
+        notification: {
+          channelId,
+        },
       },
     });
 

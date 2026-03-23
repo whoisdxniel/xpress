@@ -3,12 +3,10 @@ import * as Notifications from "expo-notifications";
 import { isSoundName, type SoundName } from "./channels";
 import { playNotificationSound } from "./soundPlayer";
 
-// Android no permite cambiar el sonido de un canal ya creado.
-// Por eso versionamos los IDs: si cambiamos la config, subimos el sufijo para forzar recreación.
-export const ANDROID_SILENT_CHANNEL_ID = "xpress_silent_v2";
+export const ANDROID_SILENT_CHANNEL_ID = "xpress_silent_v3";
 
 export function androidSoundChannelId(soundName: SoundName) {
-  return `xpress_sound_${soundName}_v2`;
+  return `xpress_sound_${soundName}_v3`;
 }
 
 const LOCAL_MARKER_KEY = "__xpress_local";
@@ -55,8 +53,8 @@ export async function ensureAndroidSilentChannel() {
   try {
     await Notifications.setNotificationChannelAsync(ANDROID_SILENT_CHANNEL_ID, {
       name: "Xpress",
-      // Queremos que aparezca en la barra/lista, sin heads-up y sin sonido.
-      importance: Notifications.AndroidImportance.LOW,
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
       sound: null,
     });
   } catch {
@@ -79,8 +77,8 @@ export async function ensureAndroidSoundChannels() {
       try {
         await Notifications.setNotificationChannelAsync(c.id, {
           name: c.name,
-          // Sonido sí, pero sin heads-up agresivo.
-          importance: Notifications.AndroidImportance.DEFAULT,
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
           sound: c.soundFile,
         });
       } catch {
@@ -90,63 +88,24 @@ export async function ensureAndroidSoundChannels() {
   );
 }
 
-function coerceObject(value: any): Record<string, any> | null {
-  if (!value || typeof value !== "object") return null;
-  if (Array.isArray(value)) return null;
-  return value as Record<string, any>;
-}
-
-function extractFromAny(input: any): {
+function extractFromData(data: any): {
   eventId: string | null;
   soundName: SoundName;
   title?: string;
   body?: string;
   data: Record<string, any>;
 } | null {
-  // Expo puede entregar diferentes formas de payload en background:
-  // - { data: { ... } }
-  // - { notification: { request: { content: { data }}}}
-  // - Notification directo
-  const candidates: any[] = [];
-  candidates.push(input);
+  const d = (data ?? {}) as any;
+  if (isLocalXpressNotification(d)) return null;
 
-  const obj = coerceObject(input);
-  if (obj) {
-    if (obj.data) candidates.push(obj.data);
-    if (obj.notification) candidates.push(obj.notification);
-    if (obj.notification?.request?.content?.data) candidates.push(obj.notification.request.content.data);
-    if (obj.request?.content?.data) candidates.push(obj.request.content.data);
-  }
+  const rawSoundName = typeof d.soundName === "string" ? d.soundName.trim() : "";
+  if (!isSoundName(rawSoundName)) return null;
 
-  for (const c of candidates) {
-    const base = coerceObject(c);
-    if (!base) continue;
+  const eventId = typeof d.eventId === "string" && d.eventId.trim() ? d.eventId.trim() : null;
+  const title = typeof d.title === "string" && d.title.trim() ? d.title.trim() : undefined;
+  const body = typeof d.message === "string" && d.message.trim() ? d.message.trim() : undefined;
 
-    // Algunos wrappers meten el payload real en `data`.
-    const nested = coerceObject((base as any).data);
-    const d = nested ? { ...base, ...nested } : base;
-
-    if (isLocalXpressNotification(d)) continue;
-
-    const rawSoundName = typeof (d as any).soundName === "string" ? String((d as any).soundName).trim() : "";
-    if (!isSoundName(rawSoundName)) continue;
-
-    const eventId =
-      typeof (d as any).eventId === "string" && String((d as any).eventId).trim() ? String((d as any).eventId).trim() : null;
-    const title =
-      typeof (d as any).title === "string" && String((d as any).title).trim() ? String((d as any).title).trim() : undefined;
-    const body =
-      (typeof (d as any).message === "string" && String((d as any).message).trim() ? String((d as any).message).trim() : undefined) ??
-      (typeof (d as any).body === "string" && String((d as any).body).trim() ? String((d as any).body).trim() : undefined);
-
-    return { eventId, soundName: rawSoundName, title, body, data: d };
-  }
-
-  return null;
-}
-
-function extractFromData(data: any) {
-  return extractFromAny(data);
+  return { eventId, soundName: rawSoundName, title, body, data: d };
 }
 
 export async function presentSilentLocalNotification(params: {
@@ -160,30 +119,18 @@ export async function presentSilentLocalNotification(params: {
   if (!title && !body) return;
 
   try {
-    // Intento 1: inmediato.
     await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: ensureLocalMarker(params.data),
-        android: { channelId: ANDROID_SILENT_CHANNEL_ID },
-      } as any,
-      trigger: null,
+      },
+      // Nota: este SDK no tipa `content.android.channelId`, así que forzamos el canal vía trigger.
+      // 1s es suficiente para que Android use el canal correcto (y se sienta "instantáneo").
+      trigger: { seconds: 1, channelId: ANDROID_SILENT_CHANNEL_ID } as any,
     });
   } catch {
-    // Fallback: algunos entornos solo aplican channelId via trigger.
-    try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          data: ensureLocalMarker(params.data),
-        },
-        trigger: { seconds: 1, channelId: ANDROID_SILENT_CHANNEL_ID } as any,
-      });
-    } catch {
-      // best-effort
-    }
+    // best-effort
   }
 }
 
@@ -199,37 +146,26 @@ export async function presentSoundLocalNotification(params: {
   if (!title && !body) return;
 
   try {
-    const channelId = androidSoundChannelId(params.soundName);
-
-    // Intento 1: inmediato.
     await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: ensureLocalMarker({ ...(params.data ?? {}), soundName: params.soundName }),
-        android: { channelId },
-      } as any,
-      trigger: null,
+      },
+      trigger: { seconds: 1, channelId: androidSoundChannelId(params.soundName) } as any,
     });
   } catch {
-    // Fallback: channelId via trigger.
-    try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          data: ensureLocalMarker({ ...(params.data ?? {}), soundName: params.soundName }),
-        },
-        trigger: { seconds: 1, channelId: androidSoundChannelId(params.soundName) } as any,
-      });
-    } catch {
-      // best-effort
-    }
+    // best-effort
   }
 }
 
 export async function handleIncomingSoundEventFromTask(taskData: any) {
-  const extracted = extractFromAny(taskData);
+  // En Android, cuando llega como notificación del sistema en background,
+  // el propio canal reproduce el MP3. Evitamos duplicar programando otra.
+  const possibleNotification = taskData?.notification;
+  if (possibleNotification?.request?.content) return;
+
+  const extracted = extractFromData(taskData?.data);
   if (!extracted) return;
   if (!shouldProcessEventId(extracted.eventId)) return;
 
@@ -245,7 +181,7 @@ export async function handleIncomingSoundEventFromTask(taskData: any) {
 
 export async function handleIncomingSoundEventFromNotification(notification: Notifications.Notification) {
   const content: any = notification?.request?.content ?? {};
-  const extracted = extractFromAny(content?.data ?? content);
+  const extracted = extractFromData({ ...(content?.data ?? {}), title: content?.title, message: content?.body });
   if (!extracted) return;
   if (!shouldProcessEventId(extracted.eventId)) return;
 

@@ -8,6 +8,7 @@ import {
   ANDROID_SILENT_CHANNEL_ID,
   ensureAndroidSoundChannels,
 } from "./incoming";
+import { SOUND_NAMES } from "./channels";
 
 let handlerInstalled = false;
 let inAppSoundInstalled = false;
@@ -79,41 +80,30 @@ export async function ensureAndroidChannels() {
 
   // Limpieza: evita que MIUI acumule categorías duplicadas.
   // Ahora usamos un canal silencioso (la app reproduce el MP3 por su cuenta).
-  await Promise.all(
-    [
-      // legacy
-      "tienes_servicio",
-      "aceptar_servicio",
-      "uber_llego",
-      "disponibles",
-      // xpress v1
-      "xpress_silent_v1",
-      "xpress_sound_disponibles_v1",
-      "xpress_sound_aceptar_servicio_v1",
-      "xpress_sound_tienes_servicio_v1",
-      "xpress_sound_uber_llego_v1",
-      // v2
-      "tienes_servicio_v2",
-      "aceptar_servicio_v2",
-      "uber_llego_v2",
-      "disponibles_v2",
-      // xpress v2 (nuevo)
-      "xpress_silent_v2",
-      "xpress_sound_disponibles_v2",
-      "xpress_sound_aceptar_servicio_v2",
-      "xpress_sound_tienes_servicio_v2",
-      "xpress_sound_uber_llego_v2",
-      // v3
-      "tienes_servicio_v3",
-      "aceptar_servicio_v3",
-      "uber_llego_v3",
-      "disponibles_v3",
-      // fallbacks anteriores que creamos
-      "xpress_fallback_v1",
-      // canal default anterior
-      "xpress_default_v1",
-    ].map(safeDeleteChannel)
-  );
+  const legacyIds = [
+    "tienes_servicio",
+    "aceptar_servicio",
+    "uber_llego",
+    "disponibles",
+    "tienes_servicio_v2",
+    "aceptar_servicio_v2",
+    "uber_llego_v2",
+    "disponibles_v2",
+    "tienes_servicio_v3",
+    "aceptar_servicio_v3",
+    "uber_llego_v3",
+    "disponibles_v3",
+    "xpress_fallback_v1",
+    "xpress_default_v1",
+    // nuestros canales con prefijo (v1/v2) + silent v1
+    "xpress_silent_v1",
+    "xpress_silent_v2",
+  ];
+
+  const prefixedSoundV1 = SOUND_NAMES.map((s) => `xpress_sound_${s}_v1`);
+  const prefixedSoundV2 = SOUND_NAMES.map((s) => `xpress_sound_${s}_v2`);
+
+  await Promise.all([...legacyIds, ...prefixedSoundV1, ...prefixedSoundV2].map(safeDeleteChannel));
 
   await ensureAndroidSilentChannel();
   await ensureAndroidSoundChannels();

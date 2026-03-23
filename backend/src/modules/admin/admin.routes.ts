@@ -23,6 +23,8 @@ import {
   adminDeletePassengerController,
   adminListRatingsController,
   adminListRidesController,
+  adminGetRidesStatsController,
+  adminDeleteAllRidesController,
   adminUpdateAddonController,
   adminUpsertPricingController,
   adminGetPricingController,
@@ -48,6 +50,8 @@ adminRouter.patch("/passengers/:passengerId", adminUpdatePassengerController);
 adminRouter.patch("/passengers/:passengerId/active", adminSetPassengerActiveController);
 adminRouter.delete("/passengers/:passengerId", adminDeletePassengerController);
 adminRouter.get("/rides", adminListRidesController);
+adminRouter.get("/rides/stats", adminGetRidesStatsController);
+adminRouter.delete("/rides", adminDeleteAllRidesController);
 adminRouter.post("/rides/:rideId/assign-driver", adminAssignRideDriverController);
 adminRouter.get("/ratings", adminListRatingsController);
 

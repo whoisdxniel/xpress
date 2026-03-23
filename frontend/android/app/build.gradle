@@ -104,6 +104,25 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Firma release real (recomendado para evitar advertencias al instalar).
+            // Configurar por propiedades (-P...) o en ~/.gradle/gradle.properties:
+            // XPRESS_UPLOAD_STORE_FILE=path/to/keystore
+            // XPRESS_UPLOAD_STORE_PASSWORD=...
+            // XPRESS_UPLOAD_KEY_ALIAS=...
+            // XPRESS_UPLOAD_KEY_PASSWORD=...
+            def storeFileProp = findProperty('XPRESS_UPLOAD_STORE_FILE') ?: System.getenv('XPRESS_UPLOAD_STORE_FILE')
+            def storePasswordProp = findProperty('XPRESS_UPLOAD_STORE_PASSWORD') ?: System.getenv('XPRESS_UPLOAD_STORE_PASSWORD')
+            def keyAliasProp = findProperty('XPRESS_UPLOAD_KEY_ALIAS') ?: System.getenv('XPRESS_UPLOAD_KEY_ALIAS')
+            def keyPasswordProp = findProperty('XPRESS_UPLOAD_KEY_PASSWORD') ?: System.getenv('XPRESS_UPLOAD_KEY_PASSWORD')
+
+            if (storeFileProp && storePasswordProp && keyAliasProp && keyPasswordProp) {
+                storeFile file(storeFileProp)
+                storePassword storePasswordProp
+                keyAlias keyAliasProp
+                keyPassword keyPasswordProp
+            }
+        }
     }
     buildTypes {
         debug {
@@ -112,7 +131,11 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
+            if (!signingConfigs.release.storeFile) {
+                // Fallback para builds locales sin keystore configurada.
+                signingConfig signingConfigs.debug
+            }
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

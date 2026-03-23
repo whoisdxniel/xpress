@@ -4,6 +4,16 @@ export type AdminDriverStatus = "OBSERVATION" | "APPROVED" | "REJECTED";
 export type ServiceType = "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
 export type DriverCreditChargeMode = "SERVICE_VALUE" | "FIXED_AMOUNT";
 
+export type RideStatus =
+  | "OPEN"
+  | "ASSIGNED"
+  | "ACCEPTED"
+  | "MATCHED"
+  | "IN_PROGRESS"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "COMPLETED";
+
 export type AdminZone = {
   id: string;
   name: string;
@@ -344,6 +354,22 @@ export function apiAdminListRides(token: string, input?: { take?: number; skip?:
   return apiRequest<{ ok: true; rides: any[] }>({
     method: "GET",
     path: `/admin/rides${qs ? `?${qs}` : ""}`,
+    token,
+  });
+}
+
+export function apiAdminGetRidesStats(token: string) {
+  return apiRequest<{ ok: true; stats: { total: number; byStatus: Record<RideStatus, number> } }>({
+    method: "GET",
+    path: "/admin/rides/stats",
+    token,
+  });
+}
+
+export function apiAdminDeleteAllRides(token: string) {
+  return apiRequest<{ ok: true; deletedCount: number }>({
+    method: "DELETE",
+    path: "/admin/rides",
     token,
   });
 }

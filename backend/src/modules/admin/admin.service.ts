@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { DocumentType, DriverStatus, ServiceType, UserRole } from "@prisma/client";
+import { DocumentType, DriverStatus, RideStatus, ServiceType, UserRole } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
 import { APP_CONFIG_ID, DEFAULT_APP_CONFIG, getAppConfig } from "../config/appConfig.service";
@@ -397,6 +397,51 @@ export async function listRides(params: {
       ratings: true,
     },
   });
+}
+
+export async function adminGetRidesStats() {
+  const allStatuses: RideStatus[] = [
+    "OPEN",
+    "ASSIGNED",
+    "ACCEPTED",
+    "MATCHED",
+    "IN_PROGRESS",
+    "CANCELLED",
+    "EXPIRED",
+    "COMPLETED",
+  ];
+
+  const grouped = await prisma.rideRequest.groupBy({
+    by: ["status"],
+    _count: { _all: true },
+  });
+
+  const byStatus: Record<RideStatus, number> = Object.fromEntries(allStatuses.map((s) => [s, 0])) as any;
+  for (const row of grouped) {
+    byStatus[row.status] = row._count._all;
+  }
+
+  const total = allStatuses.reduce((acc, s) => acc + (byStatus[s] ?? 0), 0);
+
+  return {
+    total,
+    byStatus,
+  };
+}
+
+export async function adminDeleteAllRides() {
+  const deletedCount = await prisma.$transaction(async (tx) => {
+    // Evita conflictos por FK opcional RideOffer -> RideRequest.
+    await tx.rideOffer.updateMany({
+      where: { rideId: { not: null } },
+      data: { rideId: null },
+    });
+
+    const deleted = await tx.rideRequest.deleteMany({});
+    return deleted.count;
+  });
+
+  return { ok: true as const, deletedCount };
 }
 
 export async function assignRideDriverByAdmin(params: { rideId: string; driverId: string }) {

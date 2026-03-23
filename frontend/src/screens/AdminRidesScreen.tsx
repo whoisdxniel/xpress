@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { Screen } from "../components/Screen";
 import { Card } from "../components/Card";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { SecondaryButton } from "../components/SecondaryButton";
 import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
-import { apiAdminListRides } from "../admin/admin.api";
+import { apiAdminDeleteAllRides, apiAdminGetRidesStats, apiAdminListRides, type RideStatus } from "../admin/admin.api";
 import { serviceTypeLabel } from "../utils/serviceType";
 import { formatDateYMD } from "../utils/format";
 
@@ -21,23 +22,86 @@ export function AdminRidesScreen({ navigation }: Props) {
   const token = auth.token;
 
   const [rides, setRides] = useState<RideRow[]>([]);
+  const [stats, setStats] = useState<{ total: number; byStatus: Record<RideStatus, number> } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => `Viajes (${rides.length})`, [rides.length]);
+
+  const metricItems = useMemo(() => {
+    const labels: Record<string, string> = {
+      total: "Total",
+      OPEN: "Abiertas",
+      ASSIGNED: "Asignadas",
+      ACCEPTED: "Aceptadas",
+      MATCHED: "Emparejadas",
+      IN_PROGRESS: "En progreso",
+      CANCELLED: "Canceladas",
+      EXPIRED: "Expiradas",
+      COMPLETED: "Completadas",
+    };
+
+    if (!stats) return [] as Array<{ key: string; label: string; value: number }>;
+
+    const base: Array<{ key: string; label: string; value: number }> = [{ key: "total", label: labels.total, value: stats.total }];
+    const statuses: RideStatus[] = [
+      "OPEN",
+      "ASSIGNED",
+      "ACCEPTED",
+      "MATCHED",
+      "IN_PROGRESS",
+      "CANCELLED",
+      "EXPIRED",
+      "COMPLETED",
+    ];
+
+    return [...base, ...statuses.map((s) => ({ key: s, label: labels[s], value: stats.byStatus?.[s] ?? 0 }))];
+  }, [stats]);
 
   async function load() {
     if (!token) return;
     setError(null);
     setLoading(true);
     try {
-      const res = await apiAdminListRides(token, { take: 50, skip: 0 });
-      setRides(res.rides);
+      const [resRides, resStats] = await Promise.all([apiAdminListRides(token, { take: 50, skip: 0 }), apiAdminGetRidesStats(token)]);
+      setRides(resRides.rides);
+      setStats(resStats.stats);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar viajes");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onDeleteAll() {
+    if (!token) return;
+
+    Alert.alert(
+      "Eliminar todas las carreras",
+      "Esto eliminará todas las carreras en cualquier estado. Esta acción no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setDeleting(true);
+              setError(null);
+              try {
+                await apiAdminDeleteAllRides(token);
+                await load();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "No se pudo eliminar carreras");
+              } finally {
+                setDeleting(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
   }
 
   useEffect(() => {
@@ -65,6 +129,21 @@ export function AdminRidesScreen({ navigation }: Props) {
             <Text style={styles.muted}>Cargando...</Text>
           </View>
         ) : null}
+
+        {metricItems.length ? (
+          <View style={styles.metricsWrap}>
+            {metricItems.map((m) => (
+              <Card key={m.key} style={styles.metricCard}>
+                <Text style={styles.metricValue}>{String(m.value)}</Text>
+                <Text style={styles.metricLabel}>{m.label}</Text>
+              </Card>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.actionsRow}>
+          <SecondaryButton label={deleting ? "Eliminando..." : "Eliminar todas las carreras"} onPress={onDeleteAll} disabled={loading || deleting} />
+        </View>
 
         {!!error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -103,6 +182,32 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 40,
     gap: 12,
+  },
+  metricsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  metricCard: {
+    width: "23%",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    gap: 2,
+  },
+  metricValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  metricLabel: {
+    color: colors.mutedText,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  actionsRow: {
+    gap: 10,
   },
   headerRow: {
     flexDirection: "row",

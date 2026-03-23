@@ -16,7 +16,9 @@ import {
 import {
   approveDriver,
   assignRideDriverByAdmin,
+  adminDeleteAllRides,
   adminGetAppConfig,
+  adminGetRidesStats,
   adminUpdateAppConfig,
   adminAdjustDriverCredits,
   adminGetDriverCredits,
@@ -195,6 +197,16 @@ export async function adminListRidesController(req: Request, res: Response) {
     to,
   });
   return res.status(200).json({ ok: true, rides: rows });
+}
+
+export async function adminGetRidesStatsController(_req: Request, res: Response) {
+  const stats = await adminGetRidesStats();
+  return res.status(200).json({ ok: true, stats });
+}
+
+export async function adminDeleteAllRidesController(_req: Request, res: Response) {
+  const result = await adminDeleteAllRides();
+  return res.status(200).json(result);
 }
 
 export async function adminListRatingsController(req: Request, res: Response) {

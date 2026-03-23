@@ -86,11 +86,23 @@ export async function ensureAndroidChannels() {
       "aceptar_servicio",
       "uber_llego",
       "disponibles",
+      // xpress v1
+      "xpress_silent_v1",
+      "xpress_sound_disponibles_v1",
+      "xpress_sound_aceptar_servicio_v1",
+      "xpress_sound_tienes_servicio_v1",
+      "xpress_sound_uber_llego_v1",
       // v2
       "tienes_servicio_v2",
       "aceptar_servicio_v2",
       "uber_llego_v2",
       "disponibles_v2",
+      // xpress v2 (nuevo)
+      "xpress_silent_v2",
+      "xpress_sound_disponibles_v2",
+      "xpress_sound_aceptar_servicio_v2",
+      "xpress_sound_tienes_servicio_v2",
+      "xpress_sound_uber_llego_v2",
       // v3
       "tienes_servicio_v3",
       "aceptar_servicio_v3",

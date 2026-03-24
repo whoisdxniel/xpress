@@ -14,6 +14,7 @@ import { apiCancelRide, apiGetRideById } from "../rides/rides.api";
 import { clearActiveRideOffersRideId } from "../lib/storage";
 import { MiniMeetMap } from "../components/MiniMeetMap";
 import { formatCop } from "../utils/currency";
+import { buildTelUrl, openDialer } from "../utils/phone";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 
@@ -58,9 +59,7 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
 
   const driverTelLink = useMemo(() => {
     if (!driverPhone) return null;
-    const normalized = String(driverPhone).replace(/[\s\-()]/g, "");
-    if (!normalized) return null;
-    return `tel:${normalized}`;
+    return buildTelUrl(driverPhone);
   }, [driverPhone]);
 
   async function openOperator() {
@@ -73,13 +72,8 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   }
 
   async function callDriver() {
-    if (!driverTelLink) return;
-    const ok = await Linking.canOpenURL(driverTelLink);
-    if (!ok) {
-      Alert.alert("No disponible", "No se pudo abrir la app de teléfono en este dispositivo.");
-      return;
-    }
-    await Linking.openURL(driverTelLink);
+    if (!driverPhone) return;
+    await openDialer(driverPhone);
   }
 
   async function cancelRideNow() {

@@ -105,11 +105,13 @@ export async function estimateOffer(params: {
   const now = new Date();
   const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
   const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
+  const pricingNightEndHour = Number((pricing as any).nightEndHour ?? 23);
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
     nightBaseFare: pricingNightBaseFare,
     nightStartHour: pricingNightStartHour,
+    nightEndHour: pricingNightEndHour,
   });
 
   const estimated = calculateFare({
@@ -435,11 +437,13 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
   const now = new Date();
   const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
   const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
+  const pricingNightEndHour = Number((pricing as any).nightEndHour ?? 23);
   const baseFare = effectiveBaseFare({
     dayBaseFare: Number(pricing.baseFare),
     now,
     nightBaseFare: pricingNightBaseFare,
     nightStartHour: pricingNightStartHour,
+    nightEndHour: pricingNightEndHour,
   });
 
   const created = await prisma.$transaction(async (tx) => {

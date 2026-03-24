@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { ServiceType } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { SetAvailabilitySchema, UpdateMeterSchema, UpsertLocationSchema } from "./driver.schemas";
-import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
+import { sendPushToAdmins, sendPushToUser } from "../notifications/notifications.service";
 import { chargeDriverCreditsForCompletedRide } from "../credits/credits.service";
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
@@ -188,11 +188,13 @@ export async function driverUpdateMeterController(req: Request, res: Response) {
     const now = new Date();
     const pricingNightBaseFare = Math.max(0, Number((pricing as any).nightBaseFare ?? 0));
     const pricingNightStartHour = Number((pricing as any).nightStartHour ?? 20);
+    const pricingNightEndHour = Number((pricing as any).nightEndHour ?? 23);
     baseFare = effectiveBaseFare({
       dayBaseFare: Number(pricing.baseFare),
       now,
       nightBaseFare: pricingNightBaseFare,
       nightStartHour: pricingNightStartHour,
+      nightEndHour: pricingNightEndHour,
     });
   }
 
@@ -288,17 +290,6 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
       message: "El cliente no tiene notificaciones activas (sin token registrado).",
     });
   }
-
-  // Repetición de alerta (solo si el primer push salió).
-  sendPushToUserBurst({
-    userId: ride.passenger.userId,
-    title: "Tu ejecutivo está en el lugar",
-    body: "Tu ejecutivo ya llegó al punto de recogida.",
-    soundName: "uber_llego",
-    times: 2,
-    intervalMs: 1200,
-    data: { rideId: ride.id, type: "DRIVER_ARRIVED", eventId },
-  });
 
   return res.status(200).json({ ok: true, push: first });
 }

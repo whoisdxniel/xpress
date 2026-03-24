@@ -186,6 +186,9 @@ model PricingConfig {
   // Hora desde la cual se aplica la tarifa nocturna (0-23) para este tipo.
   // Si no se configura explícitamente, queda en 20 (fallback histórico).
   nightStartHour Int         @default(20)
+  // Hora hasta la cual se aplica la tarifa nocturna (0-23) para este tipo.
+  // Default 23 para mantener compatibilidad histórica (antes era: desde start hasta fin del día).
+  nightEndHour   Int         @default(23)
   perKm          Decimal     @db.Decimal(10, 2)
 
   // Nuevo modo de tarifa por tramos.

@@ -12,6 +12,33 @@ const SOUND_ASSETS: Record<SoundName, any> = {
 let audioModeReady = false;
 let playChain: Promise<void> = Promise.resolve();
 
+const loadedSounds: Partial<Record<SoundName, Audio.Sound>> = {};
+
+async function ensureSoundLoaded(soundName: SoundName): Promise<Audio.Sound | null> {
+  const existing = loadedSounds[soundName];
+  if (existing) return existing;
+
+  const source = SOUND_ASSETS[soundName];
+  if (!source) return null;
+
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      source,
+      {
+        shouldPlay: false,
+        volume: 1.0,
+        isLooping: false,
+      },
+      undefined,
+      false
+    );
+    loadedSounds[soundName] = sound;
+    return sound;
+  } catch {
+    return null;
+  }
+}
+
 async function ensureAudioMode() {
   if (audioModeReady) return;
   audioModeReady = true;
@@ -33,47 +60,12 @@ export function playNotificationSound(soundName: SoundName) {
   playChain = playChain.then(async () => {
     await ensureAudioMode();
 
-    const source = SOUND_ASSETS[soundName];
-    if (!source) return;
+    const sound = await ensureSoundLoaded(soundName);
+    if (!sound) return;
 
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        source,
-        {
-          shouldPlay: true,
-          volume: 1.0,
-          isLooping: false,
-        },
-        undefined,
-        false
-      );
-
-      // En background/headless no siempre llegan updates; descargamos por timeout.
-      const unload = async () => {
-        try {
-          await sound.unloadAsync();
-        } catch {
-          // silencioso
-        }
-      };
-
-      let unloaded = false;
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (unloaded) return;
-        if (!status.isLoaded) return;
-        if ((status as any).didJustFinish) {
-          unloaded = true;
-          void unload();
-        }
-      });
-
-      // Fallback: liberar tras 8s
-      setTimeout(() => {
-        if (unloaded) return;
-        unloaded = true;
-        void unload();
-      }, 8000);
+      // `replayAsync` es más rápido que recrear el objeto en cada notificación.
+      await sound.replayAsync();
 
       // En Android, si el sistema ya está reproduciendo el sonido de notificación,
       // a veces el audio focus puede limitar el volumen. Aun así, esto es best-effort.
@@ -86,4 +78,14 @@ export function playNotificationSound(soundName: SoundName) {
   });
 
   return playChain;
+}
+
+export async function preloadNotificationSounds() {
+  await ensureAudioMode();
+  await Promise.all([
+    ensureSoundLoaded("tienes_servicio"),
+    ensureSoundLoaded("aceptar_servicio"),
+    ensureSoundLoaded("uber_llego"),
+    ensureSoundLoaded("disponibles"),
+  ]);
 }

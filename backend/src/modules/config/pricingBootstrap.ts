@@ -5,6 +5,7 @@ type PricingLike = {
   baseFare: any;
   nightBaseFare: any;
   nightStartHour: number;
+  nightEndHour?: number;
   perKm: any;
   includedMeters: number;
   stepMeters: number;
@@ -56,6 +57,7 @@ export async function ensurePricingConfigsForAllServiceTypes() {
         baseFare: tpl.baseFare,
         nightBaseFare: tpl.nightBaseFare ?? 0,
         nightStartHour: typeof tpl.nightStartHour === "number" ? tpl.nightStartHour : 20,
+        nightEndHour: typeof (tpl as any).nightEndHour === "number" ? (tpl as any).nightEndHour : 23,
         perKm: tpl.perKm,
         includedMeters: Number(tpl.includedMeters ?? 0),
         stepMeters: Number(tpl.stepMeters ?? 0),

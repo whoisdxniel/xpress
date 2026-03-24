@@ -22,10 +22,15 @@ export async function getAppConfig() {
   });
 }
 
-export function isNightNow(params: { now: Date; startHour: number }) {
+export function isNightNow(params: { now: Date; startHour: number; endHour: number }) {
   const hour = Math.max(0, Math.min(23, Math.floor(params.now.getHours())));
   const start = Math.max(0, Math.min(23, Math.floor(params.startHour)));
-  return hour >= start;
+  const end = Math.max(0, Math.min(23, Math.floor(params.endHour)));
+
+  // Rango inclusivo por horas (0-23). Soporta rangos que cruzan medianoche.
+  // Ej: 20 -> 6 significa: 20,21,22,23,0,1,2,3,4,5,6
+  if (start <= end) return hour >= start && hour <= end;
+  return hour >= start || hour <= end;
 }
 
 export function effectiveBaseFare(params: {
@@ -33,10 +38,11 @@ export function effectiveBaseFare(params: {
   now: Date;
   nightBaseFare: number;
   nightStartHour: number;
+  nightEndHour: number;
 }) {
   const nightFare = Number(params.nightBaseFare ?? 0);
   if (nightFare <= 0) return params.dayBaseFare;
 
-  const night = isNightNow({ now: params.now, startHour: params.nightStartHour });
+  const night = isNightNow({ now: params.now, startHour: params.nightStartHour, endHour: params.nightEndHour });
   return night ? nightFare : params.dayBaseFare;
 }

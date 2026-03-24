@@ -13,6 +13,7 @@ import {
   setupInAppSoundOnce,
   setupNotificationHandlerOnce,
 } from "../notifications/push";
+import { preloadNotificationSounds } from "../notifications/soundPlayer";
 import { apiGetPublicAppConfig, type PublicAppConfig } from "../config/config.api";
 
 type AuthState = {
@@ -46,6 +47,9 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     setupNotificationHandlerOnce();
     setupInAppSoundOnce();
     void registerBackgroundNotificationTaskOnce();
+
+    // Pre-carga MP3 para que suenen inmediato con la app abierta.
+    void preloadNotificationSounds();
   }, []);
 
   useEffect(() => {

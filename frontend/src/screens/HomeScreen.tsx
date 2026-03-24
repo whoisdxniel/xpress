@@ -45,6 +45,7 @@ import {
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
 import { notifyAndPlayInAppOnce, playInAppSoundOnce } from "../notifications/incoming";
+import { buildTelUrl, openDialer } from "../utils/phone";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -181,19 +182,14 @@ export function HomeScreen({ navigation }: Props) {
     if (role !== "USER") return null;
     const raw = attentionRide?.matchedDriver?.phone;
     if (!raw) return null;
-    const normalized = String(raw).replace(/[\s\-()]/g, "");
-    if (!normalized) return null;
-    return `tel:${normalized}`;
+    return buildTelUrl(String(raw));
   }, [role, attentionRide?.matchedDriver?.phone]);
 
   async function callDriverDirect() {
-    if (!driverTelLink) return;
-    const ok = await Linking.canOpenURL(driverTelLink);
-    if (!ok) {
-      Alert.alert("No disponible", "No se pudo abrir la app de teléfono en este dispositivo.");
-      return;
-    }
-    await Linking.openURL(driverTelLink);
+    if (role !== "USER") return;
+    const raw = attentionRide?.matchedDriver?.phone;
+    if (!raw) return;
+    await openDialer(String(raw));
   }
 
   async function refreshRide(opts?: { showLoading?: boolean }) {

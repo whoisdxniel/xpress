@@ -410,6 +410,7 @@ export function apiAdminUpsertPricing(
     baseFare: number;
     nightBaseFare?: number;
     nightStartHour?: number;
+    nightEndHour?: number;
     includedMeters?: number;
     stepMeters?: number;
     stepPrice?: number;
@@ -427,6 +428,7 @@ export function apiAdminUpsertPricing(
       baseFare: input.baseFare,
       nightBaseFare: input.nightBaseFare ?? 0,
       nightStartHour: input.nightStartHour ?? 20,
+      nightEndHour: input.nightEndHour ?? 23,
       perKm: input.perKm ?? 0,
       includedMeters: input.includedMeters ?? 0,
       stepMeters: input.stepMeters ?? 0,

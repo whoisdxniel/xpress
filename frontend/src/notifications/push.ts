@@ -33,8 +33,9 @@ export function setupNotificationHandlerOnce() {
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        // El sonido siempre lo reproducimos en-app (MP3). La notificación del sistema va mute.
-        shouldPlaySound: false,
+        // ANDROID: reproducimos el sonido vía canal nativo (más robusto incluso con JS ocupado).
+        // iOS: mantenemos sin sonido del sistema y reproducimos el MP3 in-app.
+        shouldPlaySound: Platform.OS === "android",
         shouldSetBadge: false,
       };
     },

@@ -8,6 +8,31 @@ function makeEventId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function inferEventId(params: {
+  userId: string;
+  data?: Record<string, string>;
+}): string | null {
+  const d = params.data ?? {};
+
+  const explicit = typeof d.eventId === "string" ? d.eventId.trim() : "";
+  if (explicit) return explicit;
+
+  // Bursts: deben ser únicos por envío (no dedupe), usamos burstId si existe.
+  const burstId = typeof d.burstId === "string" ? d.burstId.trim() : "";
+  if (burstId) return `BURST:${burstId}`;
+
+  const type = typeof d.type === "string" ? d.type.trim() : "";
+  if (!type) return null;
+
+  // Identificadores comunes para hacer el eventId determinístico.
+  const rideId = typeof d.rideId === "string" ? d.rideId.trim() : "";
+  const offerId = typeof d.offerId === "string" ? d.offerId.trim() : "";
+  const driverId = typeof d.driverId === "string" ? d.driverId.trim() : "";
+
+  const key = rideId || offerId || driverId || params.userId;
+  return `${type}:${key}`;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -44,7 +69,7 @@ export async function sendPushToUser(params: {
   if (tokens.length === 0) return { ok: true as const, sent: 0, failed: 0 };
 
   const soundName = params.soundName?.trim() ? params.soundName.trim() : undefined;
-  const eventId = params.data?.eventId?.trim() ? params.data.eventId.trim() : makeEventId();
+  const eventId = inferEventId({ userId: params.userId, data: params.data }) ?? makeEventId();
 
   function androidChannelIdForSound(soundName: string | undefined) {
     // Debe matchear los IDs creados en el frontend (notifications/incoming.ts)

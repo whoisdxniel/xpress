@@ -198,6 +198,10 @@ export async function handleIncomingSoundEventFromNotification(notification: Not
   if (!extracted) return;
   if (!shouldProcessEventId(extracted.eventId)) return;
 
+  // Android: el SO reproduce el MP3 vía canal (también en foreground).
+  // Evitamos duplicar el sonido en-app.
+  if (Platform.OS === "android") return;
+
   // Si ya llegó como Notification (por iOS/otro), no reprogramamos otra notificación.
   await playNotificationSound(extracted.soundName);
 }

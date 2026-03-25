@@ -123,6 +123,14 @@ export async function sendPushToUser(params: {
         headers: {
           "apns-priority": "10",
         },
+        payload: soundName
+          ? {
+              aps: {
+                // iOS requiere el nombre del archivo en el bundle (con extensión)
+                sound: `${soundName}.mp3`,
+              },
+            }
+          : undefined,
       },
     });
 

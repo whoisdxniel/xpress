@@ -1,6 +1,7 @@
 import { apiRequest } from "../lib/api";
 import type { CommitOfferResult, NearbyOffersResult, OfferCreateResult, OfferEstimate, OfferForDriverResult } from "./offers.types";
 import type { ServiceType } from "../rides/rides.types";
+import { ApiError } from "../lib/api";
 
 export async function apiEstimateOffer(
   token: string,
@@ -13,7 +14,15 @@ export async function apiEstimateOffer(
     wantsPets?: boolean;
   }
 ) {
-  return apiRequest<OfferEstimate>({ method: "POST", path: "/offers/estimate", body, token });
+  try {
+    return await apiRequest<OfferEstimate>({ method: "POST", path: "/offers/estimate", body, token, timeoutMs: 25000 });
+  } catch (e) {
+    // Retry best-effort: OSRM/latencia de red pueden tener picos.
+    if (e instanceof ApiError && e.status === 408) {
+      return apiRequest<OfferEstimate>({ method: "POST", path: "/offers/estimate", body, token, timeoutMs: 35000 });
+    }
+    throw e;
+  }
 }
 
 export async function apiCreateOffer(

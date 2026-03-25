@@ -9,6 +9,30 @@ import {
   ensureAndroidSoundChannels,
 } from "./incoming";
 import { SOUND_NAMES } from "./channels";
+import { isSoundName } from "./channels";
+
+const LOCAL_MARKER_KEY = "__xpress_local";
+
+function extractSoundNameForHandler(notification: Notifications.Notification): string {
+  const content: any = notification?.request?.content ?? {};
+  const trigger: any = notification?.request?.trigger ?? {};
+
+  const remoteData: any = trigger?.remoteMessage?.data ?? trigger?.data ?? null;
+
+  const merged = {
+    ...(remoteData && typeof remoteData === "object" ? remoteData : null),
+    ...(content?.data && typeof content.data === "object" ? content.data : null),
+  } as any;
+
+  const raw = typeof merged.soundName === "string" ? merged.soundName.trim() : "";
+  return raw;
+}
+
+function isLocalForHandler(notification: Notifications.Notification): boolean {
+  const content: any = notification?.request?.content ?? {};
+  const d: any = content?.data ?? {};
+  return d && typeof d === "object" && String(d[LOCAL_MARKER_KEY] ?? "") === "1";
+}
 
 let handlerInstalled = false;
 let inAppSoundInstalled = false;
@@ -29,13 +53,19 @@ export function setupNotificationHandlerOnce() {
 
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
+      const local = isLocalForHandler(notification);
+      const soundName = extractSoundNameForHandler(notification);
+      const allowSystemSoundAndroid = Platform.OS === "android" && !local && isSoundName(soundName);
+
       return {
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        // ANDROID: reproducimos el sonido vía canal nativo (más robusto incluso con JS ocupado).
-        // iOS: mantenemos sin sonido del sistema y reproducimos el MP3 in-app.
-        shouldPlaySound: Platform.OS === "android",
+        // ANDROID:
+        // - Sólo dejamos sonido del sistema cuando viene soundName válido (nuestros 4 MP3).
+        // - Notificaciones locales (polling/catch-up) siempre silenciosas para evitar "ding".
+        // iOS: en foreground lo manejamos in-app.
+        shouldPlaySound: allowSystemSoundAndroid,
         shouldSetBadge: false,
       };
     },

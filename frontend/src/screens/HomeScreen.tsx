@@ -95,6 +95,9 @@ export function HomeScreen({ navigation }: Props) {
   const passengerRideOffersInitializedRef = useRef(false);
   const passengerSeenRideOfferDriverIdsRef = useRef<Set<string>>(new Set());
 
+  const lastNearbyRequestsKeyRef = useRef<string>("");
+  const lastNearbyOffersKeyRef = useRef<string>("");
+
   const isFocused = useIsFocused();
 
   useEffect(() => {
@@ -356,7 +359,19 @@ export function HomeScreen({ navigation }: Props) {
       ]);
 
       if (reqRes.status === "fulfilled") {
-        setNearbyRequests(reqRes.value.items ?? []);
+        const items = Array.isArray(reqRes.value.items) ? reqRes.value.items : [];
+        const key = items
+          .map((it: any) => {
+            const idRaw = it?.id ?? it?.rideId ?? it?.ride?.id;
+            const id = idRaw != null ? String(idRaw) : "";
+            const updatedAt = it?.updatedAt != null ? String(it.updatedAt) : "";
+            return `${id}@${updatedAt}`;
+          })
+          .join("|");
+        if (key !== lastNearbyRequestsKeyRef.current) {
+          lastNearbyRequestsKeyRef.current = key;
+          setNearbyRequests(items);
+        }
         setNearbyRequestsError(null);
       } else if (showLoading) {
         const e = reqRes.reason;
@@ -364,7 +379,19 @@ export function HomeScreen({ navigation }: Props) {
       }
 
       if (offersRes.status === "fulfilled") {
-        setNearbyOffers((offersRes.value.items ?? []) as NearbyOfferItem[]);
+        const items = Array.isArray(offersRes.value.items) ? (offersRes.value.items as NearbyOfferItem[]) : ([] as NearbyOfferItem[]);
+        const key = items
+          .map((it: any) => {
+            const idRaw = it?.offerId ?? it?.id;
+            const id = idRaw != null ? String(idRaw) : "";
+            const updatedAt = it?.createdAt != null ? String(it.createdAt) : "";
+            return `${id}@${updatedAt}`;
+          })
+          .join("|");
+        if (key !== lastNearbyOffersKeyRef.current) {
+          lastNearbyOffersKeyRef.current = key;
+          setNearbyOffers(items);
+        }
         setNearbyOffersError(null);
       } else if (showLoading) {
         const e = offersRes.reason;
@@ -553,7 +580,7 @@ export function HomeScreen({ navigation }: Props) {
 
     const t = setInterval(() => {
       void refreshNearbyRequests({ showLoading: false });
-    }, 5000);
+    }, 2000);
 
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -48,6 +48,9 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     setupInAppSoundOnce();
     void registerBackgroundNotificationTaskOnce();
 
+    // Crear canales lo antes posible (Android) para evitar sonidos por defecto.
+    void ensureAndroidChannels();
+
     // Pre-carga MP3 para que suenen inmediato con la app abierta.
     void preloadNotificationSounds();
   }, []);

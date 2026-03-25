@@ -137,6 +137,8 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const driversSeqRef = useRef(0);
   const requestingRef = useRef(false);
 
+  const lastDriversKeyRef = useRef<string>("");
+
   const userInteractedRef = useRef(false);
   const shouldRecenterRef = useRef(false);
   const hasAutoCenteredRef = useRef(false);
@@ -248,7 +250,18 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           serviceType,
         });
         if (!alive || mySeq !== driversSeqRef.current) return;
-        setItems(res.items);
+        const items = Array.isArray(res.items) ? res.items : [];
+        const key = items
+          .map((d: any) => {
+            const id = d?.driverId != null ? String(d.driverId) : "";
+            const updatedAt = d?.location?.updatedAt != null ? String(d.location.updatedAt) : "";
+            return `${id}@${updatedAt}`;
+          })
+          .join("|");
+        if (key !== lastDriversKeyRef.current) {
+          lastDriversKeyRef.current = key;
+          setItems(items);
+        }
       } catch {
         // Silencioso: la UI de error la dejamos para el primer load.
       }
@@ -267,7 +280,16 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           serviceType: wantedType,
         });
         if (!alive || mySeq !== driversSeqRef.current) return;
-        setItems(res.items);
+        const items = Array.isArray(res.items) ? res.items : [];
+        const key = items
+          .map((d: any) => {
+            const id = d?.driverId != null ? String(d.driverId) : "";
+            const updatedAt = d?.location?.updatedAt != null ? String(d.location.updatedAt) : "";
+            return `${id}@${updatedAt}`;
+          })
+          .join("|");
+        lastDriversKeyRef.current = key;
+        setItems(items);
       } catch (e) {
         if (!alive || mySeq !== driversSeqRef.current) return;
         setError(e instanceof Error ? e.message : "No se pudo cargar los ejecutivos");
@@ -280,7 +302,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
     const timer = setInterval(() => {
       void refresh(tokenStr, centerVal, wantedType);
-    }, 5000);
+    }, 2000);
 
     return () => {
       alive = false;

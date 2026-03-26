@@ -28,8 +28,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "PassengerMakeOffer">;
 type MapPoint = { lat: number; lng: number };
 
 function regionFromCenter(center: MapPoint): Region {
-  // ~100m: 0.001° lat ≈ 111m (aprox).
-  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.001, longitudeDelta: 0.001 };
+  return { latitude: center.lat, longitude: center.lng, latitudeDelta: 0.00082, longitudeDelta: 0.00082 };
 }
 
 function toLatLng(p: MapPoint): LatLng {

@@ -33,8 +33,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "PassengerDriversMap">;
 type MapPoint = { lat: number; lng: number };
 
 function regionFromCenter(center: MapPoint, zoomHint?: "close" | "normal"): Region {
-  // ~100m: 0.001° lat ≈ 111m (aprox).
-  const delta = zoomHint === "close" ? 0.001 : 0.03;
+  const delta = zoomHint === "close" ? 0.00082 : 0.03;
   return { latitude: center.lat, longitude: center.lng, latitudeDelta: delta, longitudeDelta: delta };
 }
 
@@ -651,7 +650,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
                 mapRef.current = r;
               }}
               style={StyleSheet.absoluteFill}
-              initialRegion={regionFromCenter(initialCenter)}
+              initialRegion={regionFromCenter(initialCenter, "close")}
               rotateEnabled
               pitchEnabled={false}
               scrollEnabled

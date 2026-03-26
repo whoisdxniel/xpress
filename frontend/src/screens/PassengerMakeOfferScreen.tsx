@@ -36,6 +36,22 @@ function toLatLng(p: MapPoint): LatLng {
   return { latitude: p.lat, longitude: p.lng };
 }
 
+function downsampleRoutePath(path: MapPoint[], maxPoints: number) {
+  const max = Math.max(2, Math.floor(maxPoints));
+  if (path.length <= max) return path;
+
+  const stride = Math.ceil(path.length / max);
+  const out: MapPoint[] = [];
+  for (let i = 0; i < path.length; i += stride) out.push(path[i]);
+
+  const last = path[path.length - 1];
+  const lastOut = out[out.length - 1];
+  if (!lastOut || lastOut.lat !== last.lat || lastOut.lng !== last.lng) out.push(last);
+  return out.length > max ? out.slice(0, max) : out;
+}
+
+const ROUTE_PAYLOAD_MAX_POINTS = 450;
+
 export function PassengerMakeOfferScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
@@ -78,6 +94,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const pickupSeqRef = useRef(0);
   const estimateSeqRef = useRef(0);
   const autofilledOfferRef = useRef<string>("");
+  const manualEstimateRef = useRef(false);
 
   const [offeredPriceText, setOfferedPriceText] = useState<string>("");
   const offeredPriceNumber = useMemo(() => {
@@ -223,7 +240,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setRouteLoading(true);
       const route = await getDrivingRoute({ from: pickup, to: dropoff });
       if (!alive) return;
-      setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null);
+      setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude }))?.length ? downsampleRoutePath(route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), ROUTE_PAYLOAD_MAX_POINTS) : null);
       setDistanceMeters(route?.distanceMeters ?? null);
       setDurationSeconds(route?.durationSeconds ?? null);
       setRouteLoading(false);
@@ -280,7 +297,8 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     setRouteLoading(true);
     try {
       const route = await getDrivingRoute({ from: pickup, to: dropoff });
-      const nextPath = route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null;
+      const rawPath = route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null;
+      const nextPath = rawPath?.length ? downsampleRoutePath(rawPath, ROUTE_PAYLOAD_MAX_POINTS) : null;
       const nextDistance = route?.distanceMeters ?? null;
       const nextDuration = route?.durationSeconds ?? null;
 
@@ -299,15 +317,17 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   async function estimateNow(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean; autofillPrice?: boolean }) {
     if (!token || !pickup || !dropoff) return;
 
-    const ensuredRoute = await ensureRouteData({ showError: false });
-
-    const mySeq = ++estimateSeqRef.current;
     const showLoading = opts?.showLoading ?? true;
-
-    if (showLoading) setEstimating(true);
+    if (showLoading) {
+      manualEstimateRef.current = true;
+      setEstimating(true);
+    }
     setError(null);
 
     try {
+      const ensuredRoute = await ensureRouteData({ showError: false });
+      const mySeq = ++estimateSeqRef.current;
+
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted,
         pickup,
@@ -327,7 +347,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setDurationSeconds(res.durationSeconds ?? durationSeconds);
       setIsFixedPrice(Boolean(res.isFixedPrice));
       if (Array.isArray(res.routePath) && res.routePath.length >= 2) {
-        setRoutePath(res.routePath);
+        setRoutePath(downsampleRoutePath(res.routePath, ROUTE_PAYLOAD_MAX_POINTS));
       }
 
       if (opts?.autofillPrice && (!offeredPriceText.trim() || offeredPriceText.trim() === autofilledOfferRef.current)) {
@@ -336,8 +356,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         setOfferedPriceText(nextText);
       }
     } catch (e) {
-      if (mySeq !== estimateSeqRef.current) return;
-
       if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
         setEstimatedPrice(null);
         setIsFixedPrice(false);
@@ -354,13 +372,18 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       }
       setError(e instanceof Error ? e.message : "No se pudo estimar el precio");
     } finally {
-      if (showLoading && mySeq === estimateSeqRef.current) setEstimating(false);
+      if (showLoading) {
+        setEstimating(false);
+        manualEstimateRef.current = false;
+      }
     }
   }
 
   useEffect(() => {
     if (!token || !pickup || !dropoff) return;
     if (routeLoading) return;
+    if (manualEstimateRef.current) return;
+    if (estimating) return;
 
     const timer = setTimeout(() => {
       void estimateNow({ showLoading: false, openWhatsappOnNegotiate: false, autofillPrice: true });

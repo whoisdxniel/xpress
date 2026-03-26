@@ -81,6 +81,8 @@ function downsampleRoutePath(path: { lat: number; lng: number }[], maxPoints: nu
   return out.length > max ? out.slice(0, max) : out;
 }
 
+const ROUTE_PAYLOAD_MAX_POINTS = 450;
+
 export function PassengerDriversMapScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
@@ -150,6 +152,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const routePreviewSeqRef = useRef(0);
   const estimateSeqRef = useRef(0);
   const requestingRef = useRef(false);
+  const manualEstimateRef = useRef(false);
 
   const lastDriversKeyRef = useRef<string>("");
 
@@ -356,16 +359,17 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   }
 
   function currentRoutePayload() {
+    const routePath = routePreview?.routePath ?? estimate?.routePath ?? undefined;
     return {
       distanceMeters: routePreview?.distanceMeters ?? estimate?.distanceMeters,
       durationSeconds: routePreview?.durationSeconds ?? estimate?.durationSeconds,
-      routePath: routePreview?.routePath ?? estimate?.routePath ?? undefined,
+      routePath: Array.isArray(routePath) && routePath.length >= 2 ? downsampleRoutePath(routePath, ROUTE_PAYLOAD_MAX_POINTS) : undefined,
     };
   }
 
   function applyEstimateResult(res: Awaited<ReturnType<typeof apiEstimateOffer>>) {
     const fallbackRoutePath = routePreview?.routePath ?? null;
-    const resolvedRoutePath = Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : fallbackRoutePath;
+    const resolvedRoutePath = Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, ROUTE_PAYLOAD_MAX_POINTS) : fallbackRoutePath;
 
     if (resolvedRoutePath?.length && res.distanceMeters > 0) {
       setRoutePreview({
@@ -400,7 +404,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         ? {
             distanceMeters: route.distanceMeters,
             durationSeconds: route.durationSeconds,
-            routePath: route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })),
+            routePath: downsampleRoutePath(route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), ROUTE_PAYLOAD_MAX_POINTS),
           }
         : null;
 
@@ -476,7 +480,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           ? {
               distanceMeters: route.distanceMeters,
               durationSeconds: route.durationSeconds,
-              routePath: route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })),
+              routePath: downsampleRoutePath(route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), ROUTE_PAYLOAD_MAX_POINTS),
             }
           : null
       );
@@ -494,14 +498,20 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       return;
     }
 
-    await ensureRoutePreview({ showError: false });
-
-    await requestEstimate({ showLoading: true, openWhatsappOnNegotiate: true });
+    manualEstimateRef.current = true;
+    try {
+      await ensureRoutePreview({ showError: false });
+      await requestEstimate({ showLoading: true, openWhatsappOnNegotiate: true });
+    } finally {
+      manualEstimateRef.current = false;
+    }
   }
 
   useEffect(() => {
     if (!token || !center || !dropoff) return;
     if (routePreviewLoading) return;
+    if (manualEstimateRef.current) return;
+    if (estimating) return;
 
     const timer = setTimeout(() => {
       void requestEstimate({ showLoading: false, openWhatsappOnNegotiate: false });

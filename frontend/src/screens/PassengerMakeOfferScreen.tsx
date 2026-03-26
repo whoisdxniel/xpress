@@ -101,6 +101,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const estimateSeqRef = useRef(0);
   const autofilledOfferRef = useRef<string>("");
   const manualEstimateRef = useRef(false);
+  const estimateInFlightRef = useRef(false);
 
   const [offeredPriceText, setOfferedPriceText] = useState<string>("");
   const offeredPriceNumber = useMemo(() => {
@@ -300,8 +301,10 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
   async function estimateNow(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean; autofillPrice?: boolean }) {
     if (!token || !pickup || !dropoff) return;
+    if (estimateInFlightRef.current) return;
 
     const showLoading = opts?.showLoading ?? true;
+    estimateInFlightRef.current = true;
     if (showLoading) {
       manualEstimateRef.current = true;
       setEstimating(true);
@@ -309,7 +312,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     setError(null);
 
     try {
-      const ensuredRoute = await ensureRouteData({ showError: false });
       const mySeq = ++estimateSeqRef.current;
       const currentDistance = routeDataKey === currentRouteKey ? distanceMeters : null;
       const currentDuration = routeDataKey === currentRouteKey ? durationSeconds : null;
@@ -319,9 +321,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         serviceTypeWanted,
         pickup,
         dropoff,
-        distanceMeters: ensuredRoute?.distanceMeters ?? currentDistance ?? undefined,
-        durationSeconds: ensuredRoute?.durationSeconds ?? currentDuration ?? undefined,
-        routePath: ensuredRoute?.routePath ?? currentPath ?? undefined,
+        distanceMeters: currentDistance ?? undefined,
+        durationSeconds: currentDuration ?? undefined,
+        routePath: currentPath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
@@ -362,6 +364,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         setError(e instanceof Error ? e.message : "No se pudo estimar el precio");
       }
     } finally {
+      estimateInFlightRef.current = false;
       if (showLoading) {
         setEstimating(false);
         manualEstimateRef.current = false;
@@ -570,7 +573,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
             <SecondaryButton
               label={estimating ? "Generando..." : "Generar estimado"}
               onPress={() => void estimateNow({ showLoading: true, openWhatsappOnNegotiate: true, autofillPrice: true })}
-              disabled={estimating || submitting || !pickup || !dropoff}
+              disabled={estimating || submitting || !pickup || !dropoff || estimateInFlightRef.current}
             />
 
             <View style={{ gap: 8, marginTop: 6 }}>

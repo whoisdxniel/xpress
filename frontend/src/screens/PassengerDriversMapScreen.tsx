@@ -160,6 +160,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const estimateSeqRef = useRef(0);
   const requestingRef = useRef(false);
   const manualEstimateRef = useRef(false);
+  const estimateInFlightRef = useRef(false);
 
   const lastDriversKeyRef = useRef<string>("");
   const currentRouteKey = useMemo(() => routeRequestKey(center, dropoff), [center?.lat, center?.lng, dropoff?.lat, dropoff?.lng]);
@@ -431,25 +432,23 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
   async function requestEstimate(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean }) {
     if (!token || !center || !dropoff) return null;
+    if (estimateInFlightRef.current) return null;
 
     const mySeq = ++estimateSeqRef.current;
     const showLoading = opts?.showLoading ?? true;
+    estimateInFlightRef.current = true;
 
     if (showLoading) setEstimating(true);
     setError(null);
 
     try {
       const cachedPayload = currentRoutePayload();
-      const ensuredRoute =
-        cachedPayload.distanceMeters && cachedPayload.distanceMeters > 0
-          ? null
-          : await ensureRoutePreview({ showError: false });
 
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng },
-        ...currentRoutePayload(ensuredRoute),
+        ...cachedPayload,
       });
       if (mySeq !== estimateSeqRef.current) return null;
 
@@ -482,6 +481,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       }
       return null;
     } finally {
+      estimateInFlightRef.current = false;
       if (showLoading && mySeq === estimateSeqRef.current) setEstimating(false);
     }
   }
@@ -491,10 +491,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       setError("Tocá el mapa para elegir el destino");
       return;
     }
+    if (estimateInFlightRef.current) return;
 
     manualEstimateRef.current = true;
     try {
-      await ensureRoutePreview({ showError: false });
       await requestEstimate({ showLoading: true, openWhatsappOnNegotiate: true });
     } finally {
       manualEstimateRef.current = false;
@@ -701,7 +701,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
               label={estimating ? "Calculando..." : "Calcular aproximado"}
               iconName="calculator-outline"
               onPress={() => void estimateApprox()}
-              disabled={estimating || loadingLocation}
+              disabled={estimating || loadingLocation || estimateInFlightRef.current}
             />
 
             {estimate ? (

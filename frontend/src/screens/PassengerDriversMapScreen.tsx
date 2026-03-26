@@ -358,11 +358,11 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     }
   }
 
-  function currentRoutePayload() {
-    const routePath = routePreview?.routePath ?? estimate?.routePath ?? undefined;
+  function currentRoutePayload(preferredRoute?: { distanceMeters: number; durationSeconds?: number; routePath: { lat: number; lng: number }[] | null } | null) {
+    const routePath = preferredRoute?.routePath ?? routePreview?.routePath ?? estimate?.routePath ?? undefined;
     return {
-      distanceMeters: routePreview?.distanceMeters ?? estimate?.distanceMeters,
-      durationSeconds: routePreview?.durationSeconds ?? estimate?.durationSeconds,
+      distanceMeters: preferredRoute?.distanceMeters ?? routePreview?.distanceMeters ?? estimate?.distanceMeters,
+      durationSeconds: preferredRoute?.durationSeconds ?? routePreview?.durationSeconds ?? estimate?.durationSeconds,
       routePath: Array.isArray(routePath) && routePath.length >= 2 ? downsampleRoutePath(routePath, ROUTE_PAYLOAD_MAX_POINTS) : undefined,
     };
   }
@@ -425,11 +425,17 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     setError(null);
 
     try {
+      const cachedPayload = currentRoutePayload();
+      const ensuredRoute =
+        cachedPayload.distanceMeters && cachedPayload.distanceMeters > 0
+          ? null
+          : await ensureRoutePreview({ showError: false });
+
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng },
-        ...currentRoutePayload(),
+        ...currentRoutePayload(ensuredRoute),
       });
       if (mySeq !== estimateSeqRef.current) return null;
 
@@ -532,9 +538,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     setError(null);
 
     try {
-      if (!routePreview?.routePath?.length) {
-        await ensureRoutePreview({ showError: false });
-      }
+      const ensuredRoute = routePreview?.routePath?.length ? routePreview : await ensureRoutePreview({ showError: false });
 
       const addr = await ensureAddresses({ pickup: center, dropoff });
 
@@ -542,7 +546,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
-        ...currentRoutePayload(),
+        ...currentRoutePayload(ensuredRoute),
         searchRadiusM: matchingRadiusM,
       });
 

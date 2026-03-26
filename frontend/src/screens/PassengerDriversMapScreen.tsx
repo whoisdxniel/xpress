@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { AppMap, type AppMapMarker, type AppMapPolyline, type AppMapRef, type LatLng, type Region } from "../components/AppMap";
@@ -161,7 +161,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const estimateSeqRef = useRef(0);
   const requestingRef = useRef(false);
   const manualEstimateRef = useRef(false);
-  const lastAutoEstimateKeyRef = useRef("");
 
   const lastDriversKeyRef = useRef<string>("");
   const currentRouteKey = useMemo(() => routeRequestKey(center, dropoff), [center?.lat, center?.lng, dropoff?.lat, dropoff?.lng]);
@@ -488,42 +487,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     }
   }
 
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      if (!center || !dropoff) {
-        setRoutePreview(null);
-        setRoutePreviewKey(null);
-        setRoutePreviewLoading(false);
-        return;
-      }
-
-      const mySeq = ++routePreviewSeqRef.current;
-      setRoutePreviewLoading(true);
-      setRoutePreview(null);
-      setRoutePreviewKey(null);
-      const route = await getDrivingRoute({ from: center, to: dropoff });
-      if (!alive || mySeq !== routePreviewSeqRef.current) return;
-
-      setRoutePreview(
-        route
-          ? {
-              distanceMeters: route.distanceMeters,
-              durationSeconds: route.durationSeconds,
-              routePath: downsampleRoutePath(route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), ROUTE_PAYLOAD_MAX_POINTS),
-            }
-          : null
-      );
-      setRoutePreviewKey(route ? currentRouteKey : null);
-      setRoutePreviewLoading(false);
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [center?.lat, center?.lng, dropoff?.lat, dropoff?.lng]);
-
   async function estimateApprox() {
     if (!dropoff) {
       setError("Tocá el mapa para elegir el destino");
@@ -539,33 +502,15 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     }
   }
 
-  useEffect(() => {
-    lastAutoEstimateKeyRef.current = "";
-  }, [currentRouteKey, wantedType]);
-
-  useEffect(() => {
-    if (!token || !center || !dropoff) return;
-    if (routePreviewLoading) return;
-    if (manualEstimateRef.current) return;
-    if (estimating) return;
-
-    const payload = currentRoutePayload();
-    const autoEstimateKey = `${wantedType}|${currentRouteKey}|${payload.distanceMeters ?? 0}|${payload.routePath?.length ?? 0}`;
-    if (!currentRouteKey || lastAutoEstimateKeyRef.current === autoEstimateKey) return;
-
-    const timer = setTimeout(() => {
-      lastAutoEstimateKeyRef.current = autoEstimateKey;
-      void requestEstimate({ showLoading: false, openWhatsappOnNegotiate: false });
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [token, center?.lat, center?.lng, dropoff?.lat, dropoff?.lng, wantedType, routePreviewLoading, routePreview?.distanceMeters, routePreview?.durationSeconds, routePreview?.routePath?.length]);
-
   async function requestAvailableExecutives() {
     if (!token || !center) return;
     if (requestingRef.current) return;
     if (!dropoff) {
       setError("Tocá el mapa para elegir el destino");
+      return;
+    }
+    if (!estimate || estimateKey !== currentRouteKey) {
+      Alert.alert("Falta aproximado", "Primero calculá el aproximado para este destino y tipo de vehículo.");
       return;
     }
     requestingRef.current = true;
@@ -776,7 +721,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
                 </View>
               </View>
             ) : (
-              <Text style={styles.estimateHint}>Tocá el mapa para elegir destino. El aproximado se actualiza automáticamente.</Text>
+              <Text style={styles.estimateHint}>Tocá el mapa para elegir destino y luego presioná Calcular aproximado.</Text>
             )}
 
             {estimate?.isFixedPrice ? <Text style={styles.estimateSmallLine}>Tarifa fija por zona</Text> : null}

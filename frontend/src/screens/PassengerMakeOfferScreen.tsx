@@ -102,7 +102,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const estimateSeqRef = useRef(0);
   const autofilledOfferRef = useRef<string>("");
   const manualEstimateRef = useRef(false);
-  const lastAutoEstimateKeyRef = useRef("");
 
   const [offeredPriceText, setOfferedPriceText] = useState<string>("");
   const offeredPriceNumber = useMemo(() => {
@@ -235,36 +234,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     autofilledOfferRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceTypeWanted]);
-
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      if (!pickup || !dropoff) {
-        setRoutePath(null);
-        setRouteDataKey(null);
-        setDistanceMeters(null);
-        setDurationSeconds(null);
-        setRouteLoading(false);
-        return;
-      }
-
-      setRouteLoading(true);
-      setRoutePath(null);
-      setRouteDataKey(null);
-      const route = await getDrivingRoute({ from: pickup, to: dropoff });
-      if (!alive) return;
-      setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude }))?.length ? downsampleRoutePath(route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), ROUTE_PAYLOAD_MAX_POINTS) : null);
-      setRouteDataKey(route ? currentRouteKey : null);
-      setDistanceMeters(route?.distanceMeters ?? null);
-      setDurationSeconds(route?.durationSeconds ?? null);
-      setRouteLoading(false);
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng]);
 
   const fitCoords = useMemo(() => {
     const line = pickup && dropoff ? (routePath?.length ? routePath : [pickup, dropoff]) : null;
@@ -400,27 +369,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       }
     }
   }
-
-  useEffect(() => {
-    lastAutoEstimateKeyRef.current = "";
-  }, [currentRouteKey, serviceTypeWanted]);
-
-  useEffect(() => {
-    if (!token || !pickup || !dropoff) return;
-    if (routeLoading) return;
-    if (manualEstimateRef.current) return;
-    if (estimating) return;
-
-    const autoEstimateKey = `${serviceTypeWanted}|${currentRouteKey}|${routeDataKey === currentRouteKey ? distanceMeters ?? 0 : 0}|${routeDataKey === currentRouteKey ? routePath?.length ?? 0 : 0}`;
-    if (!currentRouteKey || lastAutoEstimateKeyRef.current === autoEstimateKey) return;
-
-    const timer = setTimeout(() => {
-      lastAutoEstimateKeyRef.current = autoEstimateKey;
-      void estimateNow({ showLoading: false, openWhatsappOnNegotiate: false, autofillPrice: true });
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [token, pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng, serviceTypeWanted, routeLoading, distanceMeters, durationSeconds, routePath?.length]);
 
   async function submit() {
     if (!token || !pickup || !dropoff) return;

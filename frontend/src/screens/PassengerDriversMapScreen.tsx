@@ -365,13 +365,23 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
   function applyEstimateResult(res: Awaited<ReturnType<typeof apiEstimateOffer>>) {
     const fallbackRoutePath = routePreview?.routePath ?? null;
+    const resolvedRoutePath = Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : fallbackRoutePath;
+
+    if (resolvedRoutePath?.length && res.distanceMeters > 0) {
+      setRoutePreview({
+        distanceMeters: res.distanceMeters,
+        durationSeconds: res.durationSeconds,
+        routePath: resolvedRoutePath,
+      });
+    }
+
     setEstimate({
       distanceMeters: res.distanceMeters,
       durationSeconds: res.durationSeconds,
       estimatedPrice: res.estimatedPrice,
       isFixedPrice: Boolean(res.isFixedPrice),
       fixedPriceCop: res.fixedPriceCop ?? null,
-      routePath: Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : fallbackRoutePath,
+      routePath: resolvedRoutePath,
     });
   }
 
@@ -395,9 +405,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         : null;
 
       setRoutePreview(nextRoute);
-      if (!nextRoute && opts?.showError) {
-        setError("No se pudo trazar la ruta real en este momento. Reintentá.");
-      }
       return nextRoute;
     } finally {
       if (mySeq === routePreviewSeqRef.current) setRoutePreviewLoading(false);
@@ -487,8 +494,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       return;
     }
 
-    const ensuredRoute = await ensureRoutePreview({ showError: true });
-    if (!ensuredRoute) return;
+    await ensureRoutePreview({ showError: false });
 
     await requestEstimate({ showLoading: true, openWhatsappOnNegotiate: true });
   }
@@ -496,7 +502,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   useEffect(() => {
     if (!token || !center || !dropoff) return;
     if (routePreviewLoading) return;
-    if (!routePreview) return;
 
     const timer = setTimeout(() => {
       void requestEstimate({ showLoading: false, openWhatsappOnNegotiate: false });

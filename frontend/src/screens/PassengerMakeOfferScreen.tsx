@@ -288,10 +288,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setDistanceMeters(nextDistance);
       setDurationSeconds(nextDuration);
 
-      if ((!nextPath || nextDistance == null) && opts?.showError) {
-        setError("No se pudo trazar la ruta real en este momento. Reintentá.");
-      }
-
       return nextPath && nextDistance != null
         ? { routePath: nextPath, distanceMeters: nextDistance, durationSeconds: nextDuration }
         : null;
@@ -303,8 +299,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   async function estimateNow(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean; autofillPrice?: boolean }) {
     if (!token || !pickup || !dropoff) return;
 
-    const ensuredRoute = await ensureRouteData({ showError: true });
-    if (!ensuredRoute) return;
+    const ensuredRoute = await ensureRouteData({ showError: false });
 
     const mySeq = ++estimateSeqRef.current;
     const showLoading = opts?.showLoading ?? true;
@@ -317,9 +312,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         serviceTypeWanted,
         pickup,
         dropoff,
-        distanceMeters: ensuredRoute.distanceMeters ?? undefined,
-        durationSeconds: ensuredRoute.durationSeconds ?? undefined,
-        routePath: ensuredRoute.routePath ?? undefined,
+        distanceMeters: ensuredRoute?.distanceMeters ?? distanceMeters ?? undefined,
+        durationSeconds: ensuredRoute?.durationSeconds ?? durationSeconds ?? undefined,
+        routePath: ensuredRoute?.routePath ?? routePath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
@@ -331,6 +326,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setDistanceMeters(res.distanceMeters);
       setDurationSeconds(res.durationSeconds ?? durationSeconds);
       setIsFixedPrice(Boolean(res.isFixedPrice));
+      if (Array.isArray(res.routePath) && res.routePath.length >= 2) {
+        setRoutePath(res.routePath);
+      }
 
       if (opts?.autofillPrice && (!offeredPriceText.trim() || offeredPriceText.trim() === autofilledOfferRef.current)) {
         const nextText = String(res.estimatedPrice);
@@ -363,7 +361,6 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   useEffect(() => {
     if (!token || !pickup || !dropoff) return;
     if (routeLoading) return;
-    if (!routePath?.length || distanceMeters == null) return;
 
     const timer = setTimeout(() => {
       void estimateNow({ showLoading: false, openWhatsappOnNegotiate: false, autofillPrice: true });

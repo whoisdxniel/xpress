@@ -3,8 +3,9 @@ import { env } from "./env";
 type Coords = { lat: number; lng: number };
 export type RoutePathPoint = { lat: number; lng: number };
 
-const DEFAULT_ROUTE_TIMEOUT_MS = 6500;
-const DEFAULT_TABLE_TIMEOUT_MS = 6500;
+const DEFAULT_ROUTE_TIMEOUT_MS = 3200;
+const DEFAULT_TABLE_TIMEOUT_MS = 3200;
+const BUILTIN_OSRM_BASE_URLS = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const CACHE_MAX = 800;
@@ -71,6 +72,33 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<any
 
 function osrmBaseUrl(): string {
   return (env.OSRM_BASE_URL ?? "https://router.project-osrm.org").replace(/\/$/, "");
+}
+
+function osrmBaseUrls(): string[] {
+  const preferred = osrmBaseUrl();
+  return Array.from(new Set([preferred, ...BUILTIN_OSRM_BASE_URLS].map((url) => url.replace(/\/$/, ""))));
+}
+
+async function fetchFirstJsonAgainstUrls(urls: string[], timeoutMs: number): Promise<any | null> {
+  if (!urls.length) return null;
+
+  return new Promise((resolve) => {
+    let pending = urls.length;
+    let done = false;
+
+    for (const url of urls) {
+      void fetchJsonWithTimeout(url, timeoutMs)
+        .then((data) => {
+          if (done || !data) return;
+          done = true;
+          resolve(data);
+        })
+        .finally(() => {
+          pending -= 1;
+          if (!done && pending <= 0) resolve(null);
+        });
+    }
+  });
 }
 
 function downsamplePath(path: RoutePathPoint[], maxPoints: number) {
@@ -153,11 +181,12 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
   const cached = cacheGet(routeCache, cacheKey);
   if (cached !== undefined) return cached;
 
-  const base = osrmBaseUrl();
-  const url = `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=full&geometries=geojson&alternatives=false&steps=false`;
+  const urls = osrmBaseUrls().map(
+    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=full&geometries=geojson&alternatives=false&steps=false`
+  );
 
   try {
-    const data: any = await fetchJsonWithTimeout(url, DEFAULT_ROUTE_TIMEOUT_MS);
+    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     if (!data) {
       cacheSet(routeCache, cacheKey, null);
       return null;
@@ -197,11 +226,12 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
   const cached = cacheGet(distCache, cacheKey);
   if (cached !== undefined) return cached;
 
-  const base = osrmBaseUrl();
-  const url = `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=false&alternatives=false&steps=false`;
+  const urls = osrmBaseUrls().map(
+    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=false&alternatives=false&steps=false`
+  );
 
   try {
-    const data: any = await fetchJsonWithTimeout(url, DEFAULT_ROUTE_TIMEOUT_MS);
+    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     const dist = data?.routes?.[0]?.distance;
     if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) {
       cacheSet(distCache, cacheKey, null);
@@ -228,7 +258,6 @@ export async function getDrivingTableDistancesMeters(params: {
   const cached = cacheGet(tableCache, cacheKey);
   if (cached !== undefined) return cached;
 
-  const base = osrmBaseUrl();
   const coords = [params.from, ...params.toMany]
     .map((c) => `${c.lng},${c.lat}`)
     .join(";");
@@ -238,10 +267,12 @@ export async function getDrivingTableDistancesMeters(params: {
     .map((_, idx) => String(idx + 1))
     .join(";");
 
-  const url = `${base}/table/v1/driving/${coords}?sources=0&destinations=${destinations}&annotations=distance`;
+  const urls = osrmBaseUrls().map(
+    (base) => `${base}/table/v1/driving/${coords}?sources=0&destinations=${destinations}&annotations=distance`
+  );
 
   try {
-    const data: any = await fetchJsonWithTimeout(url, DEFAULT_TABLE_TIMEOUT_MS);
+    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_TABLE_TIMEOUT_MS);
     if (!data) {
       cacheSet(tableCache, cacheKey, null);
       return null;

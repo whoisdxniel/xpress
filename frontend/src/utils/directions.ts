@@ -1,9 +1,9 @@
 export type Coords = { lat: number; lng: number };
 
-const DEFAULT_ROUTE_TIMEOUT_MS = 12_000;
-const DEFAULT_ROUTE_RETRY_TIMEOUT_MS = 20_000;
+const DEFAULT_ROUTE_TIMEOUT_MS = 3200;
 const CACHE_TTL_MS = 60_000;
 const CACHE_MAX = 250;
+const BUILTIN_OSRM_BASE_URLS = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
 
 type CacheEntry<T> = { ts: number; value: T };
 
@@ -67,16 +67,43 @@ function osrmBaseUrl(): string {
   return base.replace(/\/$/, "");
 }
 
+function osrmBaseUrls(): string[] {
+  return Array.from(new Set([osrmBaseUrl(), ...BUILTIN_OSRM_BASE_URLS].map((url) => url.replace(/\/$/, ""))));
+}
+
+async function fetchFirstJsonAgainstUrls(urls: string[], timeoutMs: number): Promise<any | null> {
+  if (!urls.length) return null;
+
+  return new Promise((resolve) => {
+    let pending = urls.length;
+    let done = false;
+
+    for (const url of urls) {
+      void fetchJsonWithTimeout(url, timeoutMs)
+        .then((data) => {
+          if (done || !data) return;
+          done = true;
+          resolve(data);
+        })
+        .finally(() => {
+          pending -= 1;
+          if (!done && pending <= 0) resolve(null);
+        });
+    }
+  });
+}
+
 export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null> {
   const cacheKey = keyFromPair(params.from, params.to);
   const cached = cacheGet(routeCache, cacheKey);
   if (cached !== undefined) return cached;
 
-  const base = osrmBaseUrl();
-  const url = `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=full&geometries=geojson&alternatives=false&steps=false`;
+  const urls = osrmBaseUrls().map(
+    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=full&geometries=geojson&alternatives=false&steps=false`
+  );
 
   try {
-    const data: any = (await fetchJsonWithTimeout(url, DEFAULT_ROUTE_TIMEOUT_MS)) ?? (await fetchJsonWithTimeout(url, DEFAULT_ROUTE_RETRY_TIMEOUT_MS));
+    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     if (!data) {
       cacheSet(routeCache, cacheKey, null);
       return null;
@@ -115,11 +142,12 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
   const cached = cacheGet(distCache, cacheKey);
   if (cached !== undefined) return cached;
 
-  const base = osrmBaseUrl();
-  const url = `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=false&alternatives=false&steps=false`;
+  const urls = osrmBaseUrls().map(
+    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=false&alternatives=false&steps=false`
+  );
 
   try {
-    const data: any = (await fetchJsonWithTimeout(url, DEFAULT_ROUTE_TIMEOUT_MS)) ?? (await fetchJsonWithTimeout(url, DEFAULT_ROUTE_RETRY_TIMEOUT_MS));
+    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     if (!data) {
       cacheSet(distCache, cacheKey, null);
       return null;

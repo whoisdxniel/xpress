@@ -69,6 +69,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
   const [routePath, setRoutePath] = useState<MapPoint[] | null>(null);
   const [isFixedPrice, setIsFixedPrice] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   const mapRef = useRef<AppMapRef | null>(null);
   const userInteractedRef = useRef(false);
@@ -215,14 +216,17 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         setRoutePath(null);
         setDistanceMeters(null);
         setDurationSeconds(null);
+        setRouteLoading(false);
         return;
       }
 
+      setRouteLoading(true);
       const route = await getDrivingRoute({ from: pickup, to: dropoff });
       if (!alive) return;
       setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null);
       setDistanceMeters(route?.distanceMeters ?? null);
       setDurationSeconds(route?.durationSeconds ?? null);
+      setRouteLoading(false);
     })();
 
     return () => {
@@ -240,8 +244,8 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   }, [pickup, dropoff, routePath]);
 
   const polyline = useMemo(() => {
-    if (!pickup || !dropoff) return null;
-    const line = (routePath?.length ? routePath : [pickup, dropoff]).map(toLatLng);
+    if (!routePath?.length) return null;
+    const line = routePath.map(toLatLng);
     return line.length >= 2
       ? {
           id: "offer-route",
@@ -326,13 +330,15 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
   useEffect(() => {
     if (!token || !pickup || !dropoff) return;
+    if (routeLoading) return;
+    if (!routePath?.length || distanceMeters == null) return;
 
     const timer = setTimeout(() => {
       void estimateNow({ showLoading: false, openWhatsappOnNegotiate: false, autofillPrice: true });
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [token, pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng, serviceTypeWanted, distanceMeters, durationSeconds, routePath?.length]);
+  }, [token, pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng, serviceTypeWanted, routeLoading, distanceMeters, durationSeconds, routePath?.length]);
 
   async function submit() {
     if (!token || !pickup || !dropoff) return;

@@ -116,6 +116,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     durationSeconds?: number;
     routePath: { lat: number; lng: number }[] | null;
   } | null>(null);
+  const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
 
   const [zones, setZones] = useState<PublicZone[]>([]);
 
@@ -425,10 +426,12 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     (async () => {
       if (!center || !dropoff) {
         setRoutePreview(null);
+        setRoutePreviewLoading(false);
         return;
       }
 
       const mySeq = ++routePreviewSeqRef.current;
+      setRoutePreviewLoading(true);
       const route = await getDrivingRoute({ from: center, to: dropoff });
       if (!alive || mySeq !== routePreviewSeqRef.current) return;
 
@@ -441,6 +444,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
             }
           : null
       );
+      setRoutePreviewLoading(false);
     })();
 
     return () => {
@@ -459,13 +463,15 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
   useEffect(() => {
     if (!token || !center || !dropoff) return;
+    if (routePreviewLoading) return;
+    if (!routePreview) return;
 
     const timer = setTimeout(() => {
       void requestEstimate({ showLoading: false, openWhatsappOnNegotiate: false });
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [token, center?.lat, center?.lng, dropoff?.lat, dropoff?.lng, wantedType, routePreview?.distanceMeters, routePreview?.durationSeconds, routePreview?.routePath?.length]);
+  }, [token, center?.lat, center?.lng, dropoff?.lat, dropoff?.lng, wantedType, routePreviewLoading, routePreview?.distanceMeters, routePreview?.durationSeconds, routePreview?.routePath?.length]);
 
   async function requestAvailableExecutives() {
     if (!token || !center) return;

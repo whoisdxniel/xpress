@@ -8,9 +8,10 @@ const DEFAULT_TABLE_TIMEOUT_MS = 3200;
 const BUILTIN_OSRM_BASE_URLS = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
+const FAILURE_CACHE_TTL_MS = 8 * 1000;
 const CACHE_MAX = 800;
 
-type CacheEntry<T> = { ts: number; value: T };
+type CacheEntry<T> = { ts: number; value: T; ttlMs: number };
 const routeCache = new Map<string, CacheEntry<{ distanceMeters: number; durationSeconds: number; path: RoutePathPoint[] } | null>>();
 const distCache = new Map<string, CacheEntry<number | null>>();
 const tableCache = new Map<string, CacheEntry<(number | null)[] | null>>();
@@ -39,15 +40,15 @@ function pruneCache(map: Map<string, CacheEntry<any>>) {
 function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
   const e = map.get(key);
   if (!e) return undefined;
-  if (Date.now() - e.ts > CACHE_TTL_MS) {
+  if (Date.now() - e.ts > e.ttlMs) {
     map.delete(key);
     return undefined;
   }
   return e.value;
 }
 
-function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T) {
-  map.set(key, { ts: Date.now(), value });
+function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs = CACHE_TTL_MS) {
+  map.set(key, { ts: Date.now(), value, ttlMs });
   pruneCache(map);
 }
 
@@ -157,12 +158,32 @@ export async function resolveDrivingMetrics(params: {
     };
   }
 
-  const route = await getDrivingRoute({ from: params.from, to: params.to });
+  if (providedDistance) {
+    return {
+      distanceMeters: providedDistance,
+      durationSeconds: providedDuration,
+      path: providedPath,
+    };
+  }
+
+  const [route, distOnly] = await Promise.all([
+    getDrivingRoute({ from: params.from, to: params.to }),
+    getDrivingRouteDistanceMeters({ from: params.from, to: params.to }),
+  ]);
+
   if (route) {
     return {
       distanceMeters: route.distanceMeters,
       durationSeconds: route.durationSeconds,
       path: route.path,
+    };
+  }
+
+  if (distOnly) {
+    return {
+      distanceMeters: distOnly,
+      durationSeconds: providedDuration,
+      path: providedPath,
     };
   }
 
@@ -175,13 +196,13 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
   if (cached !== undefined) return cached;
 
   const urls = osrmBaseUrls().map(
-    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=full&geometries=geojson&alternatives=false&steps=false`
+    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=simplified&geometries=geojson&alternatives=false&steps=false`
   );
 
   try {
     const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     if (!data) {
-      cacheSet(routeCache, cacheKey, null);
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
     const route = data?.routes?.[0];
@@ -189,9 +210,18 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
     const dur = route?.duration;
     const coords: any[] | undefined = route?.geometry?.coordinates;
 
-    if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
-    if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) return null;
-    if (!Array.isArray(coords) || coords.length < 2) return null;
+    if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
+    if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
+    if (!Array.isArray(coords) || coords.length < 2) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
 
     const rawPath = coords
       .map((pair) => {
@@ -202,14 +232,17 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
       })
       .filter(Boolean) as RoutePathPoint[];
 
-    if (rawPath.length < 2) return null;
+    if (rawPath.length < 2) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
 
     const path = downsamplePath(rawPath, 200);
     const value = { distanceMeters: Math.round(dist), durationSeconds: Math.round(dur), path };
     cacheSet(routeCache, cacheKey, value);
     return value;
   } catch {
-    cacheSet(routeCache, cacheKey, null);
+    cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
     return null;
   }
 }
@@ -227,14 +260,14 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
     const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     const dist = data?.routes?.[0]?.distance;
     if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) {
-      cacheSet(distCache, cacheKey, null);
+      cacheSet(distCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
     const value = Math.round(dist);
     cacheSet(distCache, cacheKey, value);
     return value;
   } catch {
-    cacheSet(distCache, cacheKey, null);
+    cacheSet(distCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
     return null;
   }
 }
@@ -267,13 +300,16 @@ export async function getDrivingTableDistancesMeters(params: {
   try {
     const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_TABLE_TIMEOUT_MS);
     if (!data) {
-      cacheSet(tableCache, cacheKey, null);
+      cacheSet(tableCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
     const distances: any = data?.distances;
 
     const row0 = Array.isArray(distances) ? distances?.[0] : null;
-    if (!Array.isArray(row0)) return null;
+    if (!Array.isArray(row0)) {
+      cacheSet(tableCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
 
     const out = row0.map((d: any) => {
       if (d === null) return null;
@@ -282,13 +318,13 @@ export async function getDrivingTableDistancesMeters(params: {
     });
 
     if (out.length !== params.toMany.length) {
-      cacheSet(tableCache, cacheKey, null);
+      cacheSet(tableCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
     cacheSet(tableCache, cacheKey, out);
     return out;
   } catch {
-    cacheSet(tableCache, cacheKey, null);
+    cacheSet(tableCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
     return null;
   }
 }

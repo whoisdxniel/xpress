@@ -50,6 +50,12 @@ function downsampleRoutePath(path: MapPoint[], maxPoints: number) {
   return out.length > max ? out.slice(0, max) : out;
 }
 
+function routeRequestKey(from?: MapPoint | null, to?: MapPoint | null) {
+  if (!from || !to) return "";
+  const r = (n: number) => Math.round(n * 1e5) / 1e5;
+  return `${r(from.lat)},${r(from.lng)}->${r(to.lat)},${r(to.lng)}`;
+}
+
 const ROUTE_PAYLOAD_MAX_POINTS = 450;
 
 export function PassengerMakeOfferScreen({ navigation }: Props) {
@@ -84,6 +90,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
   const [routePath, setRoutePath] = useState<MapPoint[] | null>(null);
+  const [routeDataKey, setRouteDataKey] = useState<string | null>(null);
   const [isFixedPrice, setIsFixedPrice] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
 
@@ -95,6 +102,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const estimateSeqRef = useRef(0);
   const autofilledOfferRef = useRef<string>("");
   const manualEstimateRef = useRef(false);
+  const lastAutoEstimateKeyRef = useRef("");
 
   const [offeredPriceText, setOfferedPriceText] = useState<string>("");
   const offeredPriceNumber = useMemo(() => {
@@ -119,6 +127,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const initialCenter = useMemo(() => pickup ?? { lat: 0, lng: 0 }, [pickup]);
+  const currentRouteKey = useMemo(() => routeRequestKey(pickup, dropoff), [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng]);
 
   useEffect(() => {
     // Centro instantáneo desde cache (no pide permisos).
@@ -210,6 +219,8 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     setEstimatedPrice(null);
     setDistanceMeters(null);
     setDurationSeconds(null);
+    setRoutePath(null);
+    setRouteDataKey(null);
     setIsFixedPrice(false);
     setOfferedPriceText("");
     autofilledOfferRef.current = "";
@@ -231,6 +242,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     (async () => {
       if (!pickup || !dropoff) {
         setRoutePath(null);
+        setRouteDataKey(null);
         setDistanceMeters(null);
         setDurationSeconds(null);
         setRouteLoading(false);
@@ -238,9 +250,12 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       }
 
       setRouteLoading(true);
+      setRoutePath(null);
+      setRouteDataKey(null);
       const route = await getDrivingRoute({ from: pickup, to: dropoff });
       if (!alive) return;
       setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude }))?.length ? downsampleRoutePath(route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })), ROUTE_PAYLOAD_MAX_POINTS) : null);
+      setRouteDataKey(route ? currentRouteKey : null);
       setDistanceMeters(route?.distanceMeters ?? null);
       setDurationSeconds(route?.durationSeconds ?? null);
       setRouteLoading(false);
@@ -290,7 +305,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
   async function ensureRouteData(opts?: { showError?: boolean }) {
     if (!pickup || !dropoff) return null;
-    if (routePath?.length && distanceMeters != null && distanceMeters > 0) {
+    if (routeDataKey === currentRouteKey && routePath?.length && distanceMeters != null && distanceMeters > 0) {
       return { routePath, distanceMeters, durationSeconds };
     }
 
@@ -303,6 +318,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       const nextDuration = route?.durationSeconds ?? null;
 
       setRoutePath(nextPath);
+      setRouteDataKey(nextPath && nextDistance != null ? currentRouteKey : null);
       setDistanceMeters(nextDistance);
       setDurationSeconds(nextDuration);
 
@@ -327,14 +343,17 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     try {
       const ensuredRoute = await ensureRouteData({ showError: false });
       const mySeq = ++estimateSeqRef.current;
+      const currentDistance = routeDataKey === currentRouteKey ? distanceMeters : null;
+      const currentDuration = routeDataKey === currentRouteKey ? durationSeconds : null;
+      const currentPath = routeDataKey === currentRouteKey ? routePath : null;
 
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted,
         pickup,
         dropoff,
-        distanceMeters: ensuredRoute?.distanceMeters ?? distanceMeters ?? undefined,
-        durationSeconds: ensuredRoute?.durationSeconds ?? durationSeconds ?? undefined,
-        routePath: ensuredRoute?.routePath ?? routePath ?? undefined,
+        distanceMeters: ensuredRoute?.distanceMeters ?? currentDistance ?? undefined,
+        durationSeconds: ensuredRoute?.durationSeconds ?? currentDuration ?? undefined,
+        routePath: ensuredRoute?.routePath ?? currentPath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
@@ -348,6 +367,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setIsFixedPrice(Boolean(res.isFixedPrice));
       if (Array.isArray(res.routePath) && res.routePath.length >= 2) {
         setRoutePath(downsampleRoutePath(res.routePath, ROUTE_PAYLOAD_MAX_POINTS));
+        setRouteDataKey(currentRouteKey || null);
       }
 
       if (opts?.autofillPrice && (!offeredPriceText.trim() || offeredPriceText.trim() === autofilledOfferRef.current)) {
@@ -370,7 +390,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         setError("Ese recorrido se negocia por WhatsApp.");
         return;
       }
-      setError(e instanceof Error ? e.message : "No se pudo estimar el precio");
+      if (showLoading || estimatedPrice == null) {
+        setError(e instanceof Error ? e.message : "No se pudo estimar el precio");
+      }
     } finally {
       if (showLoading) {
         setEstimating(false);
@@ -380,12 +402,20 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   }
 
   useEffect(() => {
+    lastAutoEstimateKeyRef.current = "";
+  }, [currentRouteKey, serviceTypeWanted]);
+
+  useEffect(() => {
     if (!token || !pickup || !dropoff) return;
     if (routeLoading) return;
     if (manualEstimateRef.current) return;
     if (estimating) return;
 
+    const autoEstimateKey = `${serviceTypeWanted}|${currentRouteKey}|${routeDataKey === currentRouteKey ? distanceMeters ?? 0 : 0}|${routeDataKey === currentRouteKey ? routePath?.length ?? 0 : 0}`;
+    if (!currentRouteKey || lastAutoEstimateKeyRef.current === autoEstimateKey) return;
+
     const timer = setTimeout(() => {
+      lastAutoEstimateKeyRef.current = autoEstimateKey;
       void estimateNow({ showLoading: false, openWhatsappOnNegotiate: false, autofillPrice: true });
     }, 250);
 
@@ -395,7 +425,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   async function submit() {
     if (!token || !pickup || !dropoff) return;
 
-    const ensuredRoute = routePath?.length && distanceMeters != null ? { routePath, distanceMeters, durationSeconds } : await ensureRouteData({ showError: false });
+    const ensuredRoute = routeDataKey === currentRouteKey && routePath?.length && distanceMeters != null ? { routePath, distanceMeters, durationSeconds } : await ensureRouteData({ showError: false });
 
     // Validación previa: evita publicar ofertas fuera de SC / sin fijo (debe ir a WhatsApp).
     try {

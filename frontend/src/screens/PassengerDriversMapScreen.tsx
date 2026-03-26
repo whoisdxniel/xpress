@@ -81,6 +81,12 @@ function downsampleRoutePath(path: { lat: number; lng: number }[], maxPoints: nu
   return out.length > max ? out.slice(0, max) : out;
 }
 
+function routeRequestKey(from?: MapPoint | null, to?: MapPoint | null) {
+  if (!from || !to) return "";
+  const r = (n: number) => Math.round(n * 1e5) / 1e5;
+  return `${r(from.lat)},${r(from.lng)}->${r(to.lat)},${r(to.lng)}`;
+}
+
 const ROUTE_PAYLOAD_MAX_POINTS = 450;
 
 export function PassengerDriversMapScreen({ navigation }: Props) {
@@ -118,6 +124,8 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     durationSeconds?: number;
     routePath: { lat: number; lng: number }[] | null;
   } | null>(null);
+  const [routePreviewKey, setRoutePreviewKey] = useState<string | null>(null);
+  const [estimateKey, setEstimateKey] = useState<string | null>(null);
   const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
 
   const [zones, setZones] = useState<PublicZone[]>([]);
@@ -153,8 +161,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const estimateSeqRef = useRef(0);
   const requestingRef = useRef(false);
   const manualEstimateRef = useRef(false);
+  const lastAutoEstimateKeyRef = useRef("");
 
   const lastDriversKeyRef = useRef<string>("");
+  const currentRouteKey = useMemo(() => routeRequestKey(center, dropoff), [center?.lat, center?.lng, dropoff?.lat, dropoff?.lng]);
 
   const userInteractedRef = useRef(false);
   const shouldRecenterRef = useRef(false);
@@ -332,6 +342,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     setSelected(null);
     setError(null);
     setEstimate(null);
+    setEstimateKey(null);
     // Pediste que al tocar cualquiera opción recargue ubicación actual.
     void refreshLocation({ showError: false, animate: false });
   }
@@ -359,16 +370,18 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   }
 
   function currentRoutePayload(preferredRoute?: { distanceMeters: number; durationSeconds?: number; routePath: { lat: number; lng: number }[] | null } | null) {
-    const routePath = preferredRoute?.routePath ?? routePreview?.routePath ?? estimate?.routePath ?? undefined;
+    const previewMatches = routePreviewKey === currentRouteKey;
+    const estimateMatches = estimateKey === currentRouteKey;
+    const routePath = preferredRoute?.routePath ?? (previewMatches ? routePreview?.routePath : undefined) ?? (estimateMatches ? estimate?.routePath : undefined);
     return {
-      distanceMeters: preferredRoute?.distanceMeters ?? routePreview?.distanceMeters ?? estimate?.distanceMeters,
-      durationSeconds: preferredRoute?.durationSeconds ?? routePreview?.durationSeconds ?? estimate?.durationSeconds,
+      distanceMeters: preferredRoute?.distanceMeters ?? (previewMatches ? routePreview?.distanceMeters : undefined) ?? (estimateMatches ? estimate?.distanceMeters : undefined),
+      durationSeconds: preferredRoute?.durationSeconds ?? (previewMatches ? routePreview?.durationSeconds : undefined) ?? (estimateMatches ? estimate?.durationSeconds : undefined),
       routePath: Array.isArray(routePath) && routePath.length >= 2 ? downsampleRoutePath(routePath, ROUTE_PAYLOAD_MAX_POINTS) : undefined,
     };
   }
 
   function applyEstimateResult(res: Awaited<ReturnType<typeof apiEstimateOffer>>) {
-    const fallbackRoutePath = routePreview?.routePath ?? null;
+    const fallbackRoutePath = routePreviewKey === currentRouteKey ? routePreview?.routePath ?? null : null;
     const resolvedRoutePath = Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, ROUTE_PAYLOAD_MAX_POINTS) : fallbackRoutePath;
 
     if (resolvedRoutePath?.length && res.distanceMeters > 0) {
@@ -377,6 +390,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         durationSeconds: res.durationSeconds,
         routePath: resolvedRoutePath,
       });
+      setRoutePreviewKey(currentRouteKey || null);
     }
 
     setEstimate({
@@ -387,11 +401,12 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       fixedPriceCop: res.fixedPriceCop ?? null,
       routePath: resolvedRoutePath,
     });
+    setEstimateKey(currentRouteKey || null);
   }
 
   async function ensureRoutePreview(opts?: { showError?: boolean }) {
     if (!center || !dropoff) return null;
-    if (routePreview?.routePath?.length && routePreview.distanceMeters > 0) return routePreview;
+    if (routePreviewKey === currentRouteKey && routePreview?.routePath?.length && routePreview.distanceMeters > 0) return routePreview;
 
     const mySeq = ++routePreviewSeqRef.current;
     setRoutePreviewLoading(true);
@@ -409,6 +424,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         : null;
 
       setRoutePreview(nextRoute);
+      setRoutePreviewKey(nextRoute ? currentRouteKey : null);
       return nextRoute;
     } finally {
       if (mySeq === routePreviewSeqRef.current) setRoutePreviewLoading(false);
@@ -443,7 +459,11 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       return res;
     } catch (e) {
       if (mySeq !== estimateSeqRef.current) return null;
-      setEstimate(null);
+      const hasCurrentEstimate = estimateKey === currentRouteKey && !!estimate;
+      if (!hasCurrentEstimate) {
+        setEstimate(null);
+        setEstimateKey(null);
+      }
 
       if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
         const msg = "Ese recorrido se negocia por WhatsApp.";
@@ -459,7 +479,9 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         return null;
       }
 
-      setError(e instanceof Error ? e.message : "No se pudo calcular el aproximado");
+      if (showLoading || !hasCurrentEstimate) {
+        setError(e instanceof Error ? e.message : "No se pudo calcular el aproximado");
+      }
       return null;
     } finally {
       if (showLoading && mySeq === estimateSeqRef.current) setEstimating(false);
@@ -472,12 +494,15 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     (async () => {
       if (!center || !dropoff) {
         setRoutePreview(null);
+        setRoutePreviewKey(null);
         setRoutePreviewLoading(false);
         return;
       }
 
       const mySeq = ++routePreviewSeqRef.current;
       setRoutePreviewLoading(true);
+      setRoutePreview(null);
+      setRoutePreviewKey(null);
       const route = await getDrivingRoute({ from: center, to: dropoff });
       if (!alive || mySeq !== routePreviewSeqRef.current) return;
 
@@ -490,6 +515,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
             }
           : null
       );
+      setRoutePreviewKey(route ? currentRouteKey : null);
       setRoutePreviewLoading(false);
     })();
 
@@ -514,12 +540,21 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   }
 
   useEffect(() => {
+    lastAutoEstimateKeyRef.current = "";
+  }, [currentRouteKey, wantedType]);
+
+  useEffect(() => {
     if (!token || !center || !dropoff) return;
     if (routePreviewLoading) return;
     if (manualEstimateRef.current) return;
     if (estimating) return;
 
+    const payload = currentRoutePayload();
+    const autoEstimateKey = `${wantedType}|${currentRouteKey}|${payload.distanceMeters ?? 0}|${payload.routePath?.length ?? 0}`;
+    if (!currentRouteKey || lastAutoEstimateKeyRef.current === autoEstimateKey) return;
+
     const timer = setTimeout(() => {
+      lastAutoEstimateKeyRef.current = autoEstimateKey;
       void requestEstimate({ showLoading: false, openWhatsappOnNegotiate: false });
     }, 250);
 
@@ -538,7 +573,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     setError(null);
 
     try {
-      const ensuredRoute = routePreview?.routePath?.length ? routePreview : await ensureRoutePreview({ showError: false });
+      const ensuredRoute = routePreviewKey === currentRouteKey && routePreview?.routePath?.length ? routePreview : await ensureRoutePreview({ showError: false });
 
       const addr = await ensureAddresses({ pickup: center, dropoff });
 
@@ -691,7 +726,11 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
               onPress={(c) => {
                 setDropoff({ lat: c.latitude, lng: c.longitude });
                 setDropoffAddress(null);
+                setRoutePreview(null);
+                setRoutePreviewKey(null);
                 setEstimate(null);
+                setEstimateKey(null);
+                setError(null);
               }}
               polyline={polyline}
               markers={markers}

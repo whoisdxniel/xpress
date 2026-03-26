@@ -2,10 +2,11 @@ export type Coords = { lat: number; lng: number };
 
 const DEFAULT_ROUTE_TIMEOUT_MS = 3200;
 const CACHE_TTL_MS = 60_000;
+const FAILURE_CACHE_TTL_MS = 8_000;
 const CACHE_MAX = 250;
 const BUILTIN_OSRM_BASE_URLS = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
 
-type CacheEntry<T> = { ts: number; value: T };
+type CacheEntry<T> = { ts: number; value: T; ttlMs: number };
 
 const routeCache = new Map<string, CacheEntry<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null>>();
 const distCache = new Map<string, CacheEntry<number | null>>();
@@ -13,20 +14,20 @@ const distCache = new Map<string, CacheEntry<number | null>>();
 function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
   const entry = map.get(key);
   if (!entry) return undefined;
-  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+  if (Date.now() - entry.ts > entry.ttlMs) {
     map.delete(key);
     return undefined;
   }
   return entry.value;
 }
 
-function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T) {
+function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs = CACHE_TTL_MS) {
   if (map.size >= CACHE_MAX) {
     // simple: borra el primero insertado
     const firstKey = map.keys().next().value as string | undefined;
     if (firstKey) map.delete(firstKey);
   }
-  map.set(key, { ts: Date.now(), value });
+  map.set(key, { ts: Date.now(), value, ttlMs });
 }
 
 function keyFromPair(from: Coords, to: Coords): string {
@@ -99,13 +100,13 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
   if (cached !== undefined) return cached;
 
   const urls = osrmBaseUrls().map(
-    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=full&geometries=geojson&alternatives=false&steps=false`
+    (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=simplified&geometries=geojson&alternatives=false&steps=false`
   );
 
   try {
     const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     if (!data) {
-      cacheSet(routeCache, cacheKey, null);
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
     const route = data?.routes?.[0];
@@ -113,9 +114,18 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
     const dur = route?.duration;
     const coords: any[] | undefined = route?.geometry?.coordinates;
 
-    if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
-    if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) return null;
-    if (!Array.isArray(coords) || coords.length < 2) return null;
+    if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
+    if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
+    if (!Array.isArray(coords) || coords.length < 2) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
 
     const path = coords
       .map((pair) => {
@@ -126,13 +136,16 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
       })
       .filter(Boolean) as { latitude: number; longitude: number }[];
 
-    if (path.length < 2) return null;
+    if (path.length < 2) {
+      cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
+      return null;
+    }
 
     const value = { distanceMeters: Math.round(dist), durationSeconds: Math.round(dur), path };
     cacheSet(routeCache, cacheKey, value);
     return value;
   } catch {
-    cacheSet(routeCache, cacheKey, null);
+    cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
     return null;
   }
 }
@@ -149,12 +162,13 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
   try {
     const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
     if (!data) {
-      cacheSet(distCache, cacheKey, null);
+      cacheSet(distCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
+
     const dist = data?.routes?.[0]?.distance;
     if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) {
-      cacheSet(distCache, cacheKey, null);
+      cacheSet(distCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
       return null;
     }
 
@@ -162,7 +176,7 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
     cacheSet(distCache, cacheKey, value);
     return value;
   } catch {
-    cacheSet(distCache, cacheKey, null);
+    cacheSet(distCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
     return null;
   }
 }

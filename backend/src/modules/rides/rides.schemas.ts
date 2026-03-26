@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const RideRoutePathPointSchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+});
+
 export const CreateRideSchema = z.object({
   serviceTypeWanted: z.enum(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"]),
   pickup: z.object({
@@ -14,6 +19,7 @@ export const CreateRideSchema = z.object({
   }),
   distanceMeters: z.coerce.number().int().positive().optional(),
   durationSeconds: z.coerce.number().int().positive().optional(),
+  routePath: z.array(RideRoutePathPointSchema).min(2).max(500).optional(),
   wantsAC: z.coerce.boolean().default(false),
   wantsTrunk: z.coerce.boolean().default(false),
   wantsPets: z.coerce.boolean().default(false),

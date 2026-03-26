@@ -10,6 +10,8 @@ export type OfferEstimate = {
   durationSeconds?: number;
   routePath?: RoutePathPoint[] | null;
   estimatedPrice: number;
+  isFixedPrice: boolean;
+  fixedPriceCop?: number | null;
   pricing: {
     baseFare: number;
     perKm: number;

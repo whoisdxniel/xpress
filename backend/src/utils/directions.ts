@@ -88,6 +88,66 @@ function downsamplePath(path: RoutePathPoint[], maxPoints: number) {
   return out.length > max ? out.slice(0, max) : out;
 }
 
+function parsePositiveInt(value: unknown) {
+  const raw = Math.floor(Number(value));
+  return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+}
+
+export function normalizeRoutePathInput(routePath: unknown, maxPoints = 200): RoutePathPoint[] | null {
+  if (!Array.isArray(routePath) || routePath.length < 2) return null;
+
+  const rawPath = routePath
+    .map((point) => {
+      const lat = (point as any)?.lat;
+      const lng = (point as any)?.lng;
+      if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+      if (typeof lng !== "number" || !Number.isFinite(lng)) return null;
+      return { lat, lng };
+    })
+    .filter(Boolean) as RoutePathPoint[];
+
+  if (rawPath.length < 2) return null;
+  return downsamplePath(rawPath, maxPoints);
+}
+
+export async function resolveDrivingMetrics(params: {
+  from: Coords;
+  to: Coords;
+  distanceMeters?: unknown;
+  durationSeconds?: unknown;
+  routePath?: unknown;
+}): Promise<{ distanceMeters: number; durationSeconds?: number; path: RoutePathPoint[] | null } | null> {
+  const providedDistance = parsePositiveInt(params.distanceMeters);
+  const providedDuration = parsePositiveInt(params.durationSeconds);
+  const providedPath = normalizeRoutePathInput(params.routePath);
+
+  if (providedDistance && providedPath) {
+    return {
+      distanceMeters: providedDistance,
+      durationSeconds: providedDuration,
+      path: providedPath,
+    };
+  }
+
+  const route = await getDrivingRoute({ from: params.from, to: params.to });
+  if (route) {
+    return {
+      distanceMeters: route.distanceMeters,
+      durationSeconds: route.durationSeconds,
+      path: route.path,
+    };
+  }
+
+  const dist = await getDrivingRouteDistanceMeters({ from: params.from, to: params.to });
+  if (!dist) return null;
+
+  return {
+    distanceMeters: dist,
+    durationSeconds: providedDuration,
+    path: providedPath,
+  };
+}
+
 export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; durationSeconds: number; path: RoutePathPoint[] } | null> {
   const cacheKey = keyFromPair(params.from, params.to);
   const cached = cacheGet(routeCache, cacheKey);

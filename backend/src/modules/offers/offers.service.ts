@@ -2,7 +2,7 @@ import { DriverStatus, OfferStatus, RideStatus, ServiceType } from "@prisma/clie
 import { prisma } from "../../db/prisma";
 import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { sendPushToAdmins, sendPushToUser } from "../notifications/notifications.service";
-import { getDrivingRoute, getDrivingRouteDistanceMeters } from "../../utils/directions";
+import { resolveDrivingMetrics } from "../../utils/directions";
 import { calculateFare } from "../../utils/fare";
 import { env } from "../../utils/env";
 import { effectiveBaseFare } from "../config/appConfig.service";
@@ -18,6 +18,15 @@ function driverLocationFreshSince() {
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
+}
+
+function routeUnavailableEstimate() {
+  return {
+    ok: false as const,
+    status: 503 as const,
+    error: "No se pudo calcular la ruta real en este momento. Intentá de nuevo.",
+    code: "ROUTE_UNAVAILABLE" as const,
+  };
 }
 
 export async function listMyOffers(params: { userId: string }) {
@@ -57,6 +66,9 @@ export async function estimateOffer(params: {
   serviceTypeWanted: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
   pickup: { lat: number; lng: number; address?: string };
   dropoff: { lat: number; lng: number; address?: string };
+  distanceMeters?: number;
+  durationSeconds?: number;
+  routePath?: Array<{ lat: number; lng: number }>;
   wantsAC: boolean;
   wantsTrunk: boolean;
   wantsPets: boolean;
@@ -84,19 +96,16 @@ export async function estimateOffer(params: {
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
 
-  const route = await getDrivingRoute({
+  const route = await resolveDrivingMetrics({
     from: { lat: params.pickup.lat, lng: params.pickup.lng },
     to: { lat: params.dropoff.lat, lng: params.dropoff.lng },
+    distanceMeters: params.distanceMeters,
+    durationSeconds: params.durationSeconds,
+    routePath: params.routePath,
   });
+  if (!route) return routeUnavailableEstimate();
 
-  // Fallback defensivo por si OSRM falla
-  const routeDist = route?.distanceMeters ??
-    (await getDrivingRouteDistanceMeters({
-      from: { lat: params.pickup.lat, lng: params.pickup.lng },
-      to: { lat: params.dropoff.lat, lng: params.dropoff.lng },
-    }));
-
-  const dist = Math.max(1, routeDist ?? Math.round(haversineDistanceMeters(params.pickup, params.dropoff)));
+  const dist = route.distanceMeters;
 
   const surcharge =
     (params.wantsAC ? Number(pricing.acSurcharge) : 0) +
@@ -130,9 +139,11 @@ export async function estimateOffer(params: {
   return {
     ok: true as const,
     distanceMeters: dist,
-    durationSeconds: route?.durationSeconds,
-    routePath: route?.path,
+    durationSeconds: route.durationSeconds,
+    routePath: route.path,
     estimatedPrice: Math.round((fixed.ok ? fixed.amountCop : estimated) * 100) / 100,
+    isFixedPrice: fixed.ok,
+    fixedPriceCop: fixed.ok ? Math.round(fixed.amountCop * 100) / 100 : null,
     pricing: {
       baseFare,
       perKm: Number(pricing.perKm),
@@ -151,6 +162,9 @@ export async function createOffer(params: {
   serviceTypeWanted: "CARRO" | "MOTO" | "MOTO_CARGA" | "CARRO_CARGA";
   pickup: { lat: number; lng: number; address?: string };
   dropoff: { lat: number; lng: number; address?: string };
+  distanceMeters?: number;
+  durationSeconds?: number;
+  routePath?: Array<{ lat: number; lng: number }>;
   offeredPrice: number;
   searchRadiusM: number;
 }) {
@@ -195,6 +209,9 @@ export async function createOffer(params: {
     serviceTypeWanted: params.serviceTypeWanted,
     pickup: params.pickup,
     dropoff: params.dropoff,
+    distanceMeters: params.distanceMeters,
+    durationSeconds: params.durationSeconds,
+    routePath: params.routePath,
     wantsAC: false,
     wantsTrunk: false,
     wantsPets: false,

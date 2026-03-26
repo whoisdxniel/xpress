@@ -9,6 +9,9 @@ export async function apiEstimateOffer(
     serviceTypeWanted: ServiceType;
     pickup: { lat: number; lng: number; address?: string };
     dropoff: { lat: number; lng: number; address?: string };
+    distanceMeters?: number;
+    durationSeconds?: number;
+    routePath?: Array<{ lat: number; lng: number }>;
     wantsAC?: boolean;
     wantsTrunk?: boolean;
     wantsPets?: boolean;
@@ -31,6 +34,9 @@ export async function apiCreateOffer(
     serviceTypeWanted: ServiceType;
     pickup: { lat: number; lng: number; address?: string };
     dropoff: { lat: number; lng: number; address?: string };
+    distanceMeters?: number;
+    durationSeconds?: number;
+    routePath?: Array<{ lat: number; lng: number }>;
     offeredPrice: number;
     searchRadiusM?: number;
   }

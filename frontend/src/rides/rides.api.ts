@@ -50,6 +50,9 @@ export function apiCreateRide(
     serviceTypeWanted: ServiceType;
     pickup: { lat: number; lng: number; address?: string };
     dropoff: { lat: number; lng: number; address?: string };
+    distanceMeters?: number;
+    durationSeconds?: number;
+    routePath?: Array<{ lat: number; lng: number }>;
     searchRadiusM?: number;
   }
 ) {
@@ -61,6 +64,9 @@ export function apiCreateRide(
       serviceTypeWanted: input.serviceTypeWanted,
       pickup: input.pickup,
       dropoff: input.dropoff,
+      distanceMeters: input.distanceMeters,
+      durationSeconds: input.durationSeconds,
+      routePath: input.routePath,
       wantsAC: false,
       wantsTrunk: false,
       wantsPets: false,

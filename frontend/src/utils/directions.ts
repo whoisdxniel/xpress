@@ -7,7 +7,7 @@ const CACHE_MAX = 250;
 
 type CacheEntry<T> = { ts: number; value: T };
 
-const routeCache = new Map<string, CacheEntry<{ distanceMeters: number; path: { latitude: number; longitude: number }[] } | null>>();
+const routeCache = new Map<string, CacheEntry<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null>>();
 const distCache = new Map<string, CacheEntry<number | null>>();
 
 function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
@@ -67,7 +67,7 @@ function osrmBaseUrl(): string {
   return base.replace(/\/$/, "");
 }
 
-export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; path: { latitude: number; longitude: number }[] } | null> {
+export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null> {
   const cacheKey = keyFromPair(params.from, params.to);
   const cached = cacheGet(routeCache, cacheKey);
   if (cached !== undefined) return cached;
@@ -83,9 +83,11 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
     }
     const route = data?.routes?.[0];
     const dist = route?.distance;
+    const dur = route?.duration;
     const coords: any[] | undefined = route?.geometry?.coordinates;
 
     if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
+    if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) return null;
     if (!Array.isArray(coords) || coords.length < 2) return null;
 
     const path = coords
@@ -99,7 +101,7 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
 
     if (path.length < 2) return null;
 
-    const value = { distanceMeters: Math.round(dist), path };
+    const value = { distanceMeters: Math.round(dist), durationSeconds: Math.round(dur), path };
     cacheSet(routeCache, cacheKey, value);
     return value;
   } catch {

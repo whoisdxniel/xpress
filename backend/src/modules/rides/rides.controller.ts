@@ -45,6 +45,7 @@ export async function createRideController(req: Request, res: Response) {
     dropoff: input.dropoff,
     distanceMeters: input.distanceMeters,
     durationSeconds: input.durationSeconds,
+    routePath: input.routePath,
     wantsAC: input.wantsAC,
     wantsTrunk: input.wantsTrunk,
     wantsPets: input.wantsPets,

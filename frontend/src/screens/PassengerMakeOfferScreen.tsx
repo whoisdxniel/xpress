@@ -66,13 +66,17 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
   const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
+  const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
   const [routePath, setRoutePath] = useState<MapPoint[] | null>(null);
+  const [isFixedPrice, setIsFixedPrice] = useState(false);
 
   const mapRef = useRef<AppMapRef | null>(null);
   const userInteractedRef = useRef(false);
   const shouldRecenterRef = useRef(false);
   const hasAutoCenteredRef = useRef(false);
   const pickupSeqRef = useRef(0);
+  const estimateSeqRef = useRef(0);
+  const autofilledOfferRef = useRef<string>("");
 
   const [offeredPriceText, setOfferedPriceText] = useState<string>("");
   const offeredPriceNumber = useMemo(() => {
@@ -187,14 +191,19 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     // Si cambia el destino, pedimos regenerar estimado y distancia.
     setEstimatedPrice(null);
     setDistanceMeters(null);
+    setDurationSeconds(null);
+    setIsFixedPrice(false);
     setOfferedPriceText("");
+    autofilledOfferRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dropoff?.lat, dropoff?.lng]);
 
   useEffect(() => {
     // Si cambia el servicio, pedimos regenerar estimado (la distancia no depende del tipo).
     setEstimatedPrice(null);
+    setIsFixedPrice(false);
     setOfferedPriceText("");
+    autofilledOfferRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceTypeWanted]);
 
@@ -204,13 +213,16 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     (async () => {
       if (!pickup || !dropoff) {
         setRoutePath(null);
+        setDistanceMeters(null);
+        setDurationSeconds(null);
         return;
       }
 
       const route = await getDrivingRoute({ from: pickup, to: dropoff });
       if (!alive) return;
       setRoutePath(route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null);
-      if (route?.distanceMeters != null) setDistanceMeters(route.distanceMeters);
+      setDistanceMeters(route?.distanceMeters ?? null);
+      setDurationSeconds(route?.durationSeconds ?? null);
     })();
 
     return () => {
@@ -255,38 +267,72 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [fitCoords]);
 
-  async function estimateNow() {
+  async function estimateNow(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean; autofillPrice?: boolean }) {
     if (!token || !pickup || !dropoff) return;
 
-    setEstimating(true);
+    const mySeq = ++estimateSeqRef.current;
+    const showLoading = opts?.showLoading ?? true;
+
+    if (showLoading) setEstimating(true);
     setError(null);
+
     try {
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted,
         pickup,
         dropoff,
+        distanceMeters: distanceMeters ?? undefined,
+        durationSeconds: durationSeconds ?? undefined,
+        routePath: routePath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
       });
 
+      if (mySeq !== estimateSeqRef.current) return;
+
       setEstimatedPrice(res.estimatedPrice);
       setDistanceMeters(res.distanceMeters);
-      setOfferedPriceText(String(res.estimatedPrice));
+      setDurationSeconds(res.durationSeconds ?? durationSeconds);
+      setIsFixedPrice(Boolean(res.isFixedPrice));
+
+      if (opts?.autofillPrice && (!offeredPriceText.trim() || offeredPriceText.trim() === autofilledOfferRef.current)) {
+        const nextText = String(res.estimatedPrice);
+        autofilledOfferRef.current = nextText;
+        setOfferedPriceText(nextText);
+      }
     } catch (e) {
+      if (mySeq !== estimateSeqRef.current) return;
+
       if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
+        setEstimatedPrice(null);
+        setIsFixedPrice(false);
         try {
-          await openOperator();
-          return;
+          if (opts?.openWhatsappOnNegotiate) {
+            await openOperator();
+            return;
+          }
         } catch {
           // si falla abrir WhatsApp, seguimos a mensaje
         }
+        setError("Ese recorrido se negocia por WhatsApp.");
+        return;
       }
       setError(e instanceof Error ? e.message : "No se pudo estimar el precio");
     } finally {
-      setEstimating(false);
+      if (showLoading && mySeq === estimateSeqRef.current) setEstimating(false);
     }
   }
+
+  useEffect(() => {
+    if (!token || !pickup || !dropoff) return;
+
+    const timer = setTimeout(() => {
+      void estimateNow({ showLoading: false, openWhatsappOnNegotiate: false, autofillPrice: true });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [token, pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng, serviceTypeWanted, distanceMeters, durationSeconds, routePath?.length]);
 
   async function submit() {
     if (!token || !pickup || !dropoff) return;
@@ -297,6 +343,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         serviceTypeWanted,
         pickup,
         dropoff,
+        distanceMeters: distanceMeters ?? undefined,
+        durationSeconds: durationSeconds ?? undefined,
+        routePath: routePath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
@@ -330,6 +379,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         serviceTypeWanted,
         pickup,
         dropoff,
+        distanceMeters: distanceMeters ?? undefined,
+        durationSeconds: durationSeconds ?? undefined,
+        routePath: routePath ?? undefined,
         offeredPrice: offeredPriceNumber,
         searchRadiusM: matchingRadiusM,
       });
@@ -474,12 +526,13 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
                 <Text style={styles.moneyLabel}>Precio estimado</Text>
                 <Text style={styles.moneyMain}>{formatCop(estimatedPrice)}</Text>
                 {estimatedSecondary ? <Text style={styles.moneySecondary}>{estimatedSecondary}</Text> : null}
+                {isFixedPrice ? <Text style={styles.moneySecondary}>Tarifa fija por zona</Text> : null}
               </View>
             ) : null}
 
             <SecondaryButton
               label={estimating ? "Generando..." : "Generar estimado"}
-              onPress={() => void estimateNow()}
+              onPress={() => void estimateNow({ showLoading: true, openWhatsappOnNegotiate: true, autofillPrice: true })}
               disabled={estimating || submitting || !pickup || !dropoff}
             />
 

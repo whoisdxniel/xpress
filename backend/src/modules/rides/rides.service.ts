@@ -8,7 +8,7 @@ import { chargeDriverCreditsForCompletedRide, ensureDriverHasMinCredits } from "
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
 import { effectiveBaseFare } from "../config/appConfig.service";
-import { getDrivingRoute, getDrivingTableDistancesMeters } from "../../utils/directions";
+import { getDrivingTableDistancesMeters, resolveDrivingMetrics } from "../../utils/directions";
 import { getFixedZonePriceForTrip } from "../zones/zones.service";
 
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
@@ -19,6 +19,15 @@ function driverLocationFreshSince() {
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
+}
+
+function routeUnavailableRide() {
+  return {
+    ok: false as const,
+    status: 503 as const,
+    error: "No se pudo calcular la ruta real en este momento. Intentá nuevamente.",
+    code: "ROUTE_UNAVAILABLE" as const,
+  };
 }
 
 export async function getActiveRideForRequester(params: { requester: { id: string; role: "ADMIN" | "USER" | "DRIVER" } }) {
@@ -229,6 +238,7 @@ export async function createRide(params: {
   dropoff: { lat: number; lng: number; address?: string };
   distanceMeters?: number;
   durationSeconds?: number;
+  routePath?: Array<{ lat: number; lng: number }>;
   wantsAC: boolean;
   wantsTrunk: boolean;
   wantsPets: boolean;
@@ -299,24 +309,17 @@ export async function createRide(params: {
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
 
-  const route = await getDrivingRoute({
+  const route = await resolveDrivingMetrics({
     from: { lat: params.pickup.lat, lng: params.pickup.lng },
     to: { lat: params.dropoff.lat, lng: params.dropoff.lng },
+    distanceMeters: params.distanceMeters,
+    durationSeconds: params.durationSeconds,
+    routePath: params.routePath,
   });
+  if (!route) return routeUnavailableRide();
 
-  const dist = Math.max(
-    1,
-    route?.distanceMeters ??
-      params.distanceMeters ??
-      Math.round(haversineDistanceMeters({ lat: params.pickup.lat, lng: params.pickup.lng }, { lat: params.dropoff.lat, lng: params.dropoff.lng }))
-  );
-
-  const durationSeconds =
-    route?.durationSeconds && route.durationSeconds > 0
-      ? route.durationSeconds
-      : params.durationSeconds && params.durationSeconds > 0
-        ? params.durationSeconds
-        : undefined;
+  const dist = route.distanceMeters;
+  const durationSeconds = route.durationSeconds && route.durationSeconds > 0 ? route.durationSeconds : undefined;
 
   const surcharge =
     (params.wantsAC ? Number(pricing.acSurcharge) : 0) +
@@ -378,7 +381,7 @@ export async function createRide(params: {
       dropoffAddress: params.dropoff.address,
       distanceMeters: dist,
       durationSeconds,
-      routePath: route?.path as any,
+      routePath: route.path as any,
       wantsAC: params.wantsAC,
       wantsTrunk: params.wantsTrunk,
       wantsPets: params.wantsPets,

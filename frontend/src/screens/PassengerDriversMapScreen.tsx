@@ -26,6 +26,7 @@ import { setActiveRideOffersRideId } from "../lib/storage";
 import { ApiError } from "../lib/api";
 import { apiGetPublicZones, type PublicZone } from "../config/config.api";
 import { getMatchingRadiusM } from "../config/matchingRadius";
+import { getDrivingRoute } from "../utils/directions";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerDriversMap">;
 
@@ -105,7 +106,15 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const [estimate, setEstimate] = useState<{
     distanceMeters: number;
     estimatedPrice: number;
+    durationSeconds?: number;
+    isFixedPrice: boolean;
+    fixedPriceCop?: number | null;
     routePath?: { lat: number; lng: number }[] | null;
+  } | null>(null);
+  const [routePreview, setRoutePreview] = useState<{
+    distanceMeters: number;
+    durationSeconds?: number;
+    routePath: { lat: number; lng: number }[] | null;
   } | null>(null);
 
   const [zones, setZones] = useState<PublicZone[]>([]);
@@ -137,6 +146,8 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   const driversLoadedRef = useRef(false);
   const locationSeqRef = useRef(0);
   const driversSeqRef = useRef(0);
+  const routePreviewSeqRef = useRef(0);
+  const estimateSeqRef = useRef(0);
   const requestingRef = useRef(false);
 
   const lastDriversKeyRef = useRef<string>("");
@@ -343,44 +354,118 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     }
   }
 
+  function currentRoutePayload() {
+    return {
+      distanceMeters: routePreview?.distanceMeters ?? estimate?.distanceMeters,
+      durationSeconds: routePreview?.durationSeconds ?? estimate?.durationSeconds,
+      routePath: routePreview?.routePath ?? estimate?.routePath ?? undefined,
+    };
+  }
+
+  function applyEstimateResult(res: Awaited<ReturnType<typeof apiEstimateOffer>>) {
+    const fallbackRoutePath = routePreview?.routePath ?? null;
+    setEstimate({
+      distanceMeters: res.distanceMeters,
+      durationSeconds: res.durationSeconds,
+      estimatedPrice: res.estimatedPrice,
+      isFixedPrice: Boolean(res.isFixedPrice),
+      fixedPriceCop: res.fixedPriceCop ?? null,
+      routePath: Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : fallbackRoutePath,
+    });
+  }
+
+  async function requestEstimate(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean }) {
+    if (!token || !center || !dropoff) return null;
+
+    const mySeq = ++estimateSeqRef.current;
+    const showLoading = opts?.showLoading ?? true;
+
+    if (showLoading) setEstimating(true);
+    setError(null);
+
+    try {
+      const res = await apiEstimateOffer(token, {
+        serviceTypeWanted: wantedType,
+        pickup: { lat: center.lat, lng: center.lng },
+        dropoff: { lat: dropoff.lat, lng: dropoff.lng },
+        ...currentRoutePayload(),
+      });
+      if (mySeq !== estimateSeqRef.current) return null;
+
+      applyEstimateResult(res);
+      return res;
+    } catch (e) {
+      if (mySeq !== estimateSeqRef.current) return null;
+      setEstimate(null);
+
+      if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
+        const msg = "Ese recorrido se negocia por WhatsApp.";
+        setError(msg);
+        if (opts?.openWhatsappOnNegotiate) {
+          try {
+            await openOperator();
+            return null;
+          } catch {
+            // si falla abrir WhatsApp, dejamos el mensaje visible
+          }
+        }
+        return null;
+      }
+
+      setError(e instanceof Error ? e.message : "No se pudo calcular el aproximado");
+      return null;
+    } finally {
+      if (showLoading && mySeq === estimateSeqRef.current) setEstimating(false);
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!center || !dropoff) {
+        setRoutePreview(null);
+        return;
+      }
+
+      const mySeq = ++routePreviewSeqRef.current;
+      const route = await getDrivingRoute({ from: center, to: dropoff });
+      if (!alive || mySeq !== routePreviewSeqRef.current) return;
+
+      setRoutePreview(
+        route
+          ? {
+              distanceMeters: route.distanceMeters,
+              durationSeconds: route.durationSeconds,
+              routePath: route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })),
+            }
+          : null
+      );
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [center?.lat, center?.lng, dropoff?.lat, dropoff?.lng]);
+
   async function estimateApprox() {
-    if (!token) return;
-    if (!center) return;
     if (!dropoff) {
       setError("Tocá el mapa para elegir el destino");
       return;
     }
 
-    setEstimating(true);
-    setError(null);
-
-    try {
-      const addr = await ensureAddresses({ pickup: center, dropoff });
-      const res = await apiEstimateOffer(token, {
-        serviceTypeWanted: wantedType,
-        pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
-        dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
-      });
-
-      setEstimate({
-        distanceMeters: res.distanceMeters,
-        estimatedPrice: res.estimatedPrice,
-        routePath: Array.isArray(res.routePath) && res.routePath.length >= 2 ? downsampleRoutePath(res.routePath as any, 800) : null,
-      });
-    } catch (e) {
-      if (e instanceof ApiError && e.data?.code === "NEGOTIATE_WHATSAPP") {
-        try {
-          await openOperator();
-          return;
-        } catch {
-          // si falla abrir WhatsApp, mostramos mensaje normal
-        }
-      }
-      setError(e instanceof Error ? e.message : "No se pudo calcular el aproximado");
-    } finally {
-      setEstimating(false);
-    }
+    await requestEstimate({ showLoading: true, openWhatsappOnNegotiate: true });
   }
+
+  useEffect(() => {
+    if (!token || !center || !dropoff) return;
+
+    const timer = setTimeout(() => {
+      void requestEstimate({ showLoading: false, openWhatsappOnNegotiate: false });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [token, center?.lat, center?.lng, dropoff?.lat, dropoff?.lng, wantedType, routePreview?.distanceMeters, routePreview?.durationSeconds, routePreview?.routePath?.length]);
 
   async function requestAvailableExecutives() {
     if (!token || !center) return;
@@ -396,24 +481,11 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     try {
       const addr = await ensureAddresses({ pickup: center, dropoff });
 
-      // Validación previa de SC / zona fija.
-      // Si el backend devuelve NEGOTIATE_WHATSAPP, no creamos ride.
-      const est = await apiEstimateOffer(token, {
-        serviceTypeWanted: wantedType,
-        pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
-        dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
-      });
-
-      setEstimate({
-        distanceMeters: est.distanceMeters,
-        estimatedPrice: est.estimatedPrice,
-        routePath: Array.isArray(est.routePath) && est.routePath.length >= 2 ? downsampleRoutePath(est.routePath as any, 800) : null,
-      });
-
       const created = await apiCreateRide(token, {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
+        ...currentRoutePayload(),
         searchRadiusM: matchingRadiusM,
       });
 
@@ -473,8 +545,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
       <View style={styles.mapWrap}>
         {(() => {
-          const routePoints: MapPoint[] | null = estimate?.routePath?.length
-            ? estimate.routePath
+          const rawRoutePath = estimate?.routePath?.length ? estimate.routePath : routePreview?.routePath?.length ? routePreview.routePath : null;
+
+          const routePoints: MapPoint[] | null = rawRoutePath?.length
+            ? rawRoutePath
                 .map((p) => ({ lat: p.lat, lng: p.lng }))
                 .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
             : null;
@@ -602,8 +676,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
                 </View>
               </View>
             ) : (
-              <Text style={styles.estimateHint}>Tocá el mapa para elegir destino y calculá.</Text>
+              <Text style={styles.estimateHint}>Tocá el mapa para elegir destino. El aproximado se actualiza automáticamente.</Text>
             )}
+
+            {estimate?.isFixedPrice ? <Text style={styles.estimateSmallLine}>Tarifa fija por zona</Text> : null}
           </Card>
         </View>
 

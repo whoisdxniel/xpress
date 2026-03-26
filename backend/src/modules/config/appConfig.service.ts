@@ -2,6 +2,9 @@ import { DriverCreditChargeMode } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 
 export const APP_CONFIG_ID = "global";
+export const DEFAULT_MATCHING_RADIUS_M = 2000;
+const MIN_MATCHING_RADIUS_M = 250;
+const MAX_MATCHING_RADIUS_M = 20000;
 
 export const DEFAULT_APP_CONFIG = {
   id: APP_CONFIG_ID,
@@ -9,6 +12,7 @@ export const DEFAULT_APP_CONFIG = {
   driverCreditChargePercent: 0,
   fxCopPerUsd: 0,
   fxCopPerVes: 0,
+  matchingRadiusM: DEFAULT_MATCHING_RADIUS_M,
 } as const;
 
 export async function getAppConfig() {
@@ -20,6 +24,12 @@ export async function getAppConfig() {
     create: DEFAULT_APP_CONFIG,
     update: {},
   });
+}
+
+export function normalizeMatchingRadiusM(value: unknown) {
+  const raw = Math.floor(Number(value));
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_MATCHING_RADIUS_M;
+  return Math.max(MIN_MATCHING_RADIUS_M, Math.min(MAX_MATCHING_RADIUS_M, raw));
 }
 
 export function isNightNow(params: { now: Date; startHour: number; endHour: number }) {

@@ -57,6 +57,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
   const [driverCreditChargePercent, setDriverCreditChargePercent] = useState("0");
   const [fxCopPerUsd, setFxCopPerUsd] = useState("0");
   const [fxCopPerVes, setFxCopPerVes] = useState("0");
+  const [matchingRadiusM, setMatchingRadiusM] = useState("2000");
 
   const [zoeWhatsappPhone, setZoeWhatsappPhone] = useState("");
 
@@ -80,6 +81,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
       setDriverCreditChargePercent(String(cfgRes.appConfig.driverCreditChargePercent ?? 0));
       setFxCopPerUsd(String(cfgRes.appConfig.fxCopPerUsd ?? 0));
       setFxCopPerVes(String(cfgRes.appConfig.fxCopPerVes ?? 0));
+      setMatchingRadiusM(String(cfgRes.appConfig.matchingRadiusM ?? 2000));
 
       setZoeWhatsappPhone(String(cfgRes.appConfig.zoeWhatsappPhone ?? ""));
 
@@ -137,6 +139,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
     const pct = parseNumber(driverCreditChargePercent);
     const fxUsd = parseNumber(fxCopPerUsd);
     const fxVes = parseNumber(fxCopPerVes);
+    const nextMatchingRadiusM = parseIntSafe(matchingRadiusM);
 
     if (!Number.isFinite(baseFare) || baseFare < 0) return Alert.alert("Validación", "Tarifa base inválida");
     if (!Number.isFinite(nightBaseFareByType) || nightBaseFareByType < 0)
@@ -151,6 +154,8 @@ export function AdminSettingsScreen({ navigation }: Props) {
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) return Alert.alert("Validación", "Porcentaje inválido (0-100)");
     if (!Number.isFinite(fxUsd) || fxUsd < 0) return Alert.alert("Validación", "Tasa COP por USD inválida");
     if (!Number.isFinite(fxVes) || fxVes < 0) return Alert.alert("Validación", "Tasa COP por Bs inválida");
+    if (!Number.isFinite(nextMatchingRadiusM) || nextMatchingRadiusM <= 0)
+      return Alert.alert("Validación", "Radio global inválido");
 
     if (includedMeters > 0 && stepMeters <= 0) {
       return Alert.alert("Validación", "Si hay distancia incluida, definí también los metros por tramo");
@@ -179,6 +184,7 @@ export function AdminSettingsScreen({ navigation }: Props) {
         driverCreditChargeMode: "SERVICE_VALUE",
         fxCopPerUsd: fxUsd,
         fxCopPerVes: fxVes,
+        matchingRadiusM: nextMatchingRadiusM,
 
         zoeWhatsappPhone,
 
@@ -342,6 +348,25 @@ export function AdminSettingsScreen({ navigation }: Props) {
           />
 
           <Text style={styles.muted}>0 = ocultar montos secundarios en USD/Bs.</Text>
+        </Card>
+
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="radio-outline" size={18} color={colors.gold} />
+            <Text style={styles.sectionTitle}>Radio global</Text>
+          </View>
+
+          <TextField
+            label="Radio de emparejamiento (m)"
+            value={matchingRadiusM}
+            onChangeText={setMatchingRadiusM}
+            keyboardType="number-pad"
+            placeholder="Ej: 2000"
+          />
+
+          <Text style={styles.muted}>
+            Define a qué distancia se detectan clientes, ejecutivos y contraofertas. Valor inicial recomendado: 2000 m.
+          </Text>
         </Card>
 
         <Card style={styles.card}>

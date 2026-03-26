@@ -4,6 +4,7 @@ export type PublicAppConfig = {
   id: string;
   fxCopPerUsd: number;
   fxCopPerVes: number;
+  matchingRadiusM: number;
 
   zoeWhatsappPhone: string;
 

@@ -208,6 +208,7 @@ export function apiAdminGetAppConfig(token: string) {
       driverCreditChargePercent: number;
       fxCopPerUsd: number;
       fxCopPerVes: number;
+      matchingRadiusM: number;
 
       zoeWhatsappPhone: string;
 
@@ -246,6 +247,7 @@ export function apiAdminUpdateAppConfig(
     driverCreditChargeMode?: DriverCreditChargeMode;
     fxCopPerUsd?: number;
     fxCopPerVes?: number;
+    matchingRadiusM?: number;
 
     zoeWhatsappPhone?: string | null;
 
@@ -264,6 +266,7 @@ export function apiAdminUpdateAppConfig(
     driverCreditChargeMode: input.driverCreditChargeMode,
     fxCopPerUsd: input.fxCopPerUsd,
     fxCopPerVes: input.fxCopPerVes,
+    matchingRadiusM: input.matchingRadiusM,
 
     zoeWhatsappPhone: input.zoeWhatsappPhone,
 
@@ -291,6 +294,7 @@ export function apiAdminUpdateAppConfig(
       driverCreditChargePercent: number;
       fxCopPerUsd: number;
       fxCopPerVes: number;
+      matchingRadiusM: number;
 
       zoeWhatsappPhone: string;
 

@@ -133,6 +133,8 @@ export const UpdateAppConfigSchema = z.object({
   fxCopPerUsd: z.coerce.number().nonnegative().optional(),
   fxCopPerVes: z.coerce.number().nonnegative().optional(),
 
+  matchingRadiusM: z.coerce.number().int().positive().max(20000).optional(),
+
   // WhatsApp operador (ZOE)
   zoeWhatsappPhone: z.string().max(40).optional().nullable(),
 

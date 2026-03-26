@@ -25,6 +25,7 @@ import { ensureForegroundPermission, getCurrentCoords, getFastCoords } from "../
 import { setActiveRideOffersRideId } from "../lib/storage";
 import { ApiError } from "../lib/api";
 import { apiGetPublicZones, type PublicZone } from "../config/config.api";
+import { getMatchingRadiusM } from "../config/matchingRadius";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerDriversMap">;
 
@@ -82,6 +83,7 @@ function downsampleRoutePath(path: { lat: number; lng: number }[], maxPoints: nu
 export function PassengerDriversMapScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
+  const matchingRadiusM = getMatchingRadiusM(auth.appConfig);
 
   // Fallback inmediato mientras se obtiene GPS real.
   const fallbackCenter = useMemo(() => ({ lat: 7.7669, lng: -72.2250 }), []);
@@ -246,7 +248,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         const res = await apiNearbyDrivers(tokenForReq, {
           lat: centerForReq.lat,
           lng: centerForReq.lng,
-          radiusM: 2000,
+          radiusM: matchingRadiusM,
           serviceType,
         });
         if (!alive || mySeq !== driversSeqRef.current) return;
@@ -276,7 +278,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         const res = await apiNearbyDrivers(tokenStr, {
           lat: centerVal.lat,
           lng: centerVal.lng,
-          radiusM: 2000,
+          radiusM: matchingRadiusM,
           serviceType: wantedType,
         });
         if (!alive || mySeq !== driversSeqRef.current) return;
@@ -308,7 +310,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       alive = false;
       clearInterval(timer);
     };
-  }, [token, center, wantedType]);
+  }, [token, center, wantedType, matchingRadiusM]);
 
   async function onSelectServiceType(next: ServiceType) {
     setWantedType(next);
@@ -412,7 +414,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng, address: addr.pickupAddress ?? undefined },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng, address: addr.dropoffAddress ?? undefined },
-        searchRadiusM: 2000,
+        searchRadiusM: matchingRadiusM,
       });
 
       await setActiveRideOffersRideId(created.ride.id);

@@ -2,8 +2,9 @@ import bcrypt from "bcryptjs";
 import { DocumentType, DriverStatus, RideStatus, ServiceType, UserRole } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
-import { APP_CONFIG_ID, DEFAULT_APP_CONFIG, getAppConfig } from "../config/appConfig.service";
+import { APP_CONFIG_ID, DEFAULT_APP_CONFIG, getAppConfig, normalizeMatchingRadiusM } from "../config/appConfig.service";
 import { ensureDriverHasMinCredits } from "../credits/credits.service";
+import { emitToUser } from "../../realtime/realtime";
 
 function generatePassword(len = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -537,6 +538,9 @@ export async function assignRideDriverByAdmin(params: { rideId: string; driverId
     },
   });
 
+  emitToUser(ride.passenger.userId, "ride:changed", { rideId: updated.id, type: "RIDE_ASSIGNED" });
+  emitToUser(driver.userId, "ride:changed", { rideId: updated.id, type: "RIDE_ASSIGNED" });
+
   void sendPushToUser({
     userId: ride.passenger.userId,
     title: "Chofer asignado",
@@ -715,6 +719,7 @@ export async function adminGetAppConfig() {
       driverCreditChargePercent: Number((appConfig as any).driverCreditChargePercent ?? 0),
       fxCopPerUsd: Number((appConfig as any).fxCopPerUsd ?? 0),
       fxCopPerVes: Number((appConfig as any).fxCopPerVes ?? 0),
+      matchingRadiusM: normalizeMatchingRadiusM((appConfig as any).matchingRadiusM),
 
       zoeWhatsappPhone: text((appConfig as any).zoeWhatsappPhone),
 
@@ -747,6 +752,7 @@ export async function adminUpdateAppConfig(input: {
   driverCreditChargeMode: "SERVICE_VALUE" | "FIXED_AMOUNT";
   fxCopPerUsd?: number;
   fxCopPerVes?: number;
+  matchingRadiusM?: number;
 
   zoeWhatsappPhone?: string | null;
 
@@ -779,6 +785,7 @@ export async function adminUpdateAppConfig(input: {
   const driverCreditChargePercent = Math.max(0, Math.min(100, Number(input.driverCreditChargePercent ?? 0)));
   const fxCopPerUsd = input.fxCopPerUsd !== undefined ? Math.max(0, Number(input.fxCopPerUsd)) : undefined;
   const fxCopPerVes = input.fxCopPerVes !== undefined ? Math.max(0, Number(input.fxCopPerVes)) : undefined;
+  const matchingRadiusM = input.matchingRadiusM !== undefined ? normalizeMatchingRadiusM(input.matchingRadiusM) : undefined;
 
   const sanitizeText = (v: any) => {
     if (v === undefined) return undefined;
@@ -823,6 +830,7 @@ export async function adminUpdateAppConfig(input: {
         driverCreditChargePercent,
         ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
         ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
+        ...(matchingRadiusM !== undefined ? { matchingRadiusM } : null),
         ...extraCreate,
       },
       update: {
@@ -830,6 +838,7 @@ export async function adminUpdateAppConfig(input: {
         driverCreditChargePercent,
         ...(fxCopPerUsd !== undefined ? { fxCopPerUsd } : null),
         ...(fxCopPerVes !== undefined ? { fxCopPerVes } : null),
+        ...(matchingRadiusM !== undefined ? { matchingRadiusM } : null),
         ...extraUpdate,
       },
     });
@@ -879,6 +888,7 @@ export async function adminUpdateAppConfig(input: {
       driverCreditChargePercent: Number((updated as any).driverCreditChargePercent ?? 0),
       fxCopPerUsd: Number((updated as any).fxCopPerUsd ?? 0),
       fxCopPerVes: Number((updated as any).fxCopPerVes ?? 0),
+      matchingRadiusM: normalizeMatchingRadiusM((updated as any).matchingRadiusM),
 
       zoeWhatsappPhone: text((updated as any).zoeWhatsappPhone),
 

@@ -2,7 +2,7 @@ import { DriverStatus, OfferStatus, RideCandidateStatus, RideStatus, ServiceType
 import { prisma } from "../../db/prisma";
 import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { buildWhatsappLink } from "../../utils/whatsapp";
-import { emitToUser } from "../../realtime/realtime";
+import { emitToUser, emitToUsers } from "../../realtime/realtime";
 import { sendPushToAdmins, sendPushToUser, sendPushToUserBurst } from "../notifications/notifications.service";
 import { chargeDriverCreditsForCompletedRide, ensureDriverHasMinCredits } from "../credits/credits.service";
 import { env } from "../../utils/env";
@@ -456,6 +456,12 @@ export async function createRide(params: {
         .sort((a, b) => a.distanceMeters - b.distanceMeters)
         .slice(0, 50);
 
+      emitToUsers(
+        targets.map((t) => t.userId),
+        "driver:nearby:changed",
+        { type: "RIDE_AVAILABLE", rideId: ride.id, eventId: `RIDE_AVAILABLE:${ride.id}` }
+      );
+
       await Promise.all(
         targets.map((t) =>
           sendPushToUser({
@@ -795,6 +801,7 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
       });
 
   emitToUser(ride.passenger.userId, "ride:offers:changed", { rideId: ride.id });
+  emitToUser(ride.passenger.userId, "ride:changed", { rideId: ride.id, type: "RIDE_OFFERED" });
 
   // Push al cliente por cada ejecutivo que se ofrece.
   void sendPushToUser({
@@ -1046,6 +1053,8 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
   emitToUser(params.userId, "ride:matched", { rideId: updated.id, driverId: driver.id });
   emitToUser(driver.userId, "ride:matched", { rideId: updated.id });
   emitToUser(params.userId, "ride:offers:changed", { rideId: updated.id });
+  emitToUser(params.userId, "ride:changed", { rideId: updated.id, type: "RIDE_MATCHED" });
+  emitToUser(driver.userId, "ride:changed", { rideId: updated.id, type: "RIDE_MATCHED" });
 
   for (const item of withdrawnOffers) {
     emitToUser(item.passengerUserId, "ride:offers:changed", { rideId: item.rideId });

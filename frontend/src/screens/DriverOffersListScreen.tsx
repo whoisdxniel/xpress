@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Screen } from "../components/Screen";
@@ -15,12 +15,15 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 import { serviceTypeLabel } from "../utils/serviceType";
 import { ensureForegroundPermission, getLastKnownCoords, getCurrentCoords } from "../utils/location";
 import { formatCop } from "../utils/currency";
+import { getMatchingRadiusM } from "../config/matchingRadius";
+import { subscribeRealtimeEvent } from "../realtime/socket";
 
 type Props = NativeStackScreenProps<RootStackParamList, "DriverOffersList">;
 
 export function DriverOffersListScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
+  const matchingRadiusM = getMatchingRadiusM(auth.appConfig);
 
   const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [items, setItems] = useState<NearbyOfferItem[]>([]);
@@ -53,7 +56,7 @@ export function DriverOffersListScreen({ navigation }: Props) {
       if (mySeq !== refreshSeq.current) return;
       setCenter(coords);
 
-      const res = await apiNearbyOffers(token, { lat: coords.lat, lng: coords.lng, radiusM: 2000 });
+      const res = await apiNearbyOffers(token, { lat: coords.lat, lng: coords.lng, radiusM: matchingRadiusM });
       if (mySeq !== refreshSeq.current) return;
       setItems(res.items);
     } catch (e) {
@@ -68,7 +71,33 @@ export function DriverOffersListScreen({ navigation }: Props) {
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, matchingRadiusM]);
+
+  const handleRealtimeNearbyChange = (payload: any) => {
+    const type = typeof payload?.type === "string" ? payload.type : "";
+    if (type !== "OFFER_AVAILABLE") return;
+    void refresh();
+  };
+
+  useEffect(() => {
+    if (!token) return;
+
+    const cleanup = subscribeRealtimeEvent("driver:nearby:changed", handleRealtimeNearbyChange);
+    return () => cleanup();
+  }, [token, matchingRadiusM]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      void refresh();
+    });
+
+    return () => {
+      sub.remove();
+    };
+  }, [token, matchingRadiusM]);
 
 
   if (!canUse) {
@@ -108,7 +137,7 @@ export function DriverOffersListScreen({ navigation }: Props) {
         ) : null}
 
         <Card style={{ marginTop: 16, gap: 6 }}>
-          <Text style={styles.small}>Radio: 2 km</Text>
+          <Text style={styles.small}>Radio: {Math.round(matchingRadiusM)} m</Text>
           {center ? <Text style={styles.small}>Tu ubicación: {center.lat.toFixed(5)}, {center.lng.toFixed(5)}</Text> : null}
           <Text style={styles.small}>Resultados: {items.length}</Text>
         </Card>

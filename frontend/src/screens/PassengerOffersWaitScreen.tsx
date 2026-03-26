@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Screen } from "../components/Screen";
@@ -26,6 +26,7 @@ import { MiniRouteMap } from "../components/MiniRouteMap";
 import { clearActiveRideOffersRideId, setActiveRideOffersRideId } from "../lib/storage";
 import { serviceTypeIconName, serviceTypeLabel } from "../utils/serviceType";
 import { formatCop } from "../utils/currency";
+import { subscribeRealtimeEvent } from "../realtime/socket";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerOffersWait">;
 
@@ -135,9 +136,42 @@ export function PassengerOffersWaitScreen({ route, navigation }: Props) {
     if (!token) return;
     const t = setInterval(() => {
       void refresh();
-    }, 3500);
+    }, 3000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, rideId]);
+
+  const handleRealtimeRideChange = (payload: any) => {
+    const payloadRideId = payload?.rideId != null ? String(payload.rideId) : "";
+    if (payloadRideId && payloadRideId !== rideId) return;
+    void refresh();
+  };
+
+  useEffect(() => {
+    if (!token) return;
+
+    const cleanups = [
+      subscribeRealtimeEvent("ride:offers:changed", handleRealtimeRideChange),
+      subscribeRealtimeEvent("ride:matched", handleRealtimeRideChange),
+      subscribeRealtimeEvent("ride:changed", handleRealtimeRideChange),
+    ];
+
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [token, rideId]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      void refresh();
+    });
+
+    return () => {
+      sub.remove();
+    };
   }, [token, rideId]);
 
   async function openTechSheet(driverId: string) {

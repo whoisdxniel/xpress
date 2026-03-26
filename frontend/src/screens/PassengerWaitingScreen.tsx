@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Screen } from "../components/Screen";
@@ -17,6 +17,7 @@ import { formatCop } from "../utils/currency";
 import { buildTelUrl, openDialer } from "../utils/phone";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
+import { subscribeRealtimeEvent } from "../realtime/socket";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerWaiting">;
 
@@ -36,6 +37,50 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   const [cancelLoading, setCancelLoading] = useState(false);
 
   const firstLoadRef = useRef(true);
+
+  async function refresh() {
+    if (!token) return;
+
+    const showSpinner = firstLoadRef.current;
+    if (showSpinner) setDriverPhoneLoading(true);
+    try {
+      const res = await apiGetRideById(token, { rideId });
+
+      const phone = res.ride?.matchedDriver?.phone ?? null;
+      setDriverPhone(phone);
+
+      const pickupLat = Number(res.ride?.pickupLat);
+      const pickupLng = Number(res.ride?.pickupLng);
+      if (Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
+        setPickup({
+          lat: pickupLat,
+          lng: pickupLng,
+          address: (res.ride?.pickupAddress as string | null | undefined) ?? null,
+        });
+      }
+
+      const dLat = Number(res.ride?.matchedDriver?.location?.lat);
+      const dLng = Number(res.ride?.matchedDriver?.location?.lng);
+      if (Number.isFinite(dLat) && Number.isFinite(dLng)) {
+        setDriverLoc({
+          lat: dLat,
+          lng: dLng,
+          updatedAt: res.ride?.matchedDriver?.location?.updatedAt,
+        });
+      }
+
+      const dist = Number(res.ride?.distanceMeters);
+      setDistanceMeters(Number.isFinite(dist) ? dist : null);
+
+      const price = Number(res.ride?.estimatedPrice ?? res.ride?.agreedPrice);
+      setEstimatedPrice(Number.isFinite(price) ? price : null);
+    } catch {
+      setDriverPhone(null);
+    } finally {
+      if (showSpinner) setDriverPhoneLoading(false);
+      firstLoadRef.current = false;
+    }
+  }
 
   const operatorPhone = useMemo(() => {
     const fromConfig = auth.appConfig?.zoeWhatsappPhone;
@@ -105,72 +150,62 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
   }
 
   useEffect(() => {
-    const tokenStr = token;
-    if (!tokenStr) return;
-    let alive = true;
+    if (!token) return;
 
-    async function refresh(tokenForReq: string) {
-      const showSpinner = firstLoadRef.current;
-      if (showSpinner) setDriverPhoneLoading(true);
-      try {
-        const res = await apiGetRideById(tokenForReq, { rideId });
-        if (!alive) return;
-
-        const phone = res.ride?.matchedDriver?.phone ?? null;
-        setDriverPhone(phone);
-
-        const pickupLat = Number(res.ride?.pickupLat);
-        const pickupLng = Number(res.ride?.pickupLng);
-        if (Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
-          setPickup({
-            lat: pickupLat,
-            lng: pickupLng,
-            address: (res.ride?.pickupAddress as string | null | undefined) ?? null,
-          });
-        }
-
-        const dLat = Number(res.ride?.matchedDriver?.location?.lat);
-        const dLng = Number(res.ride?.matchedDriver?.location?.lng);
-        if (Number.isFinite(dLat) && Number.isFinite(dLng)) {
-          setDriverLoc({
-            lat: dLat,
-            lng: dLng,
-            updatedAt: res.ride?.matchedDriver?.location?.updatedAt,
-          });
-        }
-
-        const dist = Number(res.ride?.distanceMeters);
-        setDistanceMeters(Number.isFinite(dist) ? dist : null);
-
-        const price = Number(res.ride?.estimatedPrice ?? res.ride?.agreedPrice);
-        setEstimatedPrice(Number.isFinite(price) ? price : null);
-      } catch {
-        if (!alive) return;
-        setDriverPhone(null);
-      } finally {
-        if (!alive) return;
-        if (showSpinner) setDriverPhoneLoading(false);
-        firstLoadRef.current = false;
-      }
-    }
-
-    void refresh(tokenStr);
+    void refresh();
     const t = setInterval(() => {
-      void refresh(tokenStr);
-    }, 3500);
+      void refresh();
+    }, 3000);
 
     return () => {
-      alive = false;
       clearInterval(t);
+    };
+  }, [token, rideId]);
+
+  const handleRealtimeRideChange = (payload: any) => {
+    const payloadRideId = payload?.rideId != null ? String(payload.rideId) : "";
+    if (payloadRideId && payloadRideId !== rideId) return;
+    void refresh();
+  };
+
+  useEffect(() => {
+    if (!token) return;
+
+    const cleanups = [
+      subscribeRealtimeEvent("ride:matched", handleRealtimeRideChange),
+      subscribeRealtimeEvent("ride:changed", handleRealtimeRideChange),
+    ];
+
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [token, rideId]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      void refresh();
+    });
+
+    return () => {
+      sub.remove();
     };
   }, [token, rideId]);
 
   return (
     <Screen style={{ padding: 0 }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.headerRow}>
-          <Ionicons name="time-outline" size={20} color={colors.gold} />
-          <GoldTitle>En espera</GoldTitle>
+        <View style={styles.headerWrap}>
+          <View style={styles.headerRow}>
+            <Ionicons name="time-outline" size={20} color={colors.gold} />
+            <GoldTitle>En espera</GoldTitle>
+          </View>
+
+          <Pressable style={styles.iconBtn} onPress={() => void refresh()}>
+            <Ionicons name="refresh" size={18} color={colors.text} />
+          </Pressable>
         </View>
 
         <Card style={{ marginTop: 16, gap: 10 }}>
@@ -270,11 +305,26 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
+  headerWrap: {
     marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
   title: {
     color: colors.text,

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { apiLogin, apiMe, apiRegisterPassenger } from "./auth.api";
 import type { MeUser, UserRole } from "./auth.types";
 import { clearToken, getToken, setToken } from "../lib/storage";
@@ -15,6 +16,7 @@ import {
 } from "../notifications/push";
 import { preloadNotificationSounds } from "../notifications/soundPlayer";
 import { apiGetPublicAppConfig, type PublicAppConfig } from "../config/config.api";
+import { syncRealtimeToken } from "../realtime/socket";
 
 type AuthState = {
   bootstrapped: boolean;
@@ -56,9 +58,13 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    syncRealtimeToken(state.token);
+  }, [state.token]);
+
+  useEffect(() => {
     let alive = true;
 
-    (async () => {
+    async function refreshPublicConfig() {
       try {
         const res = await apiGetPublicAppConfig();
         if (!alive) return;
@@ -66,10 +72,23 @@ export function AuthProvider(props: { children: React.ReactNode }) {
       } catch {
         // silencioso: si falla, la app igual funciona (sólo no muestra montos secundarios)
       }
-    })();
+    }
+
+    void refreshPublicConfig();
+
+    const timer = setInterval(() => {
+      void refreshPublicConfig();
+    }, 60000);
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      void refreshPublicConfig();
+    });
 
     return () => {
       alive = false;
+      clearInterval(timer);
+      sub.remove();
     };
   }, [state.token]);
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Screen } from "../components/Screen";
@@ -46,6 +46,8 @@ import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
 import { notifyAndPlayInAppOnce, playInAppSoundOnce } from "../notifications/incoming";
 import { buildTelUrl, openDialer } from "../utils/phone";
+import { getMatchingRadiusM } from "../config/matchingRadius";
+import { subscribeRealtimeEvent } from "../realtime/socket";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -58,6 +60,7 @@ export function HomeScreen({ navigation }: Props) {
   const userId = auth.user?.id;
 
   const token = auth.token;
+  const matchingRadiusM = useMemo(() => getMatchingRadiusM(auth.appConfig), [auth.appConfig]);
   const [attentionRide, setAttentionRide] = useState<any | null>(null);
   const [rideLoading, setRideLoading] = useState(false);
   const [rideError, setRideError] = useState<string | null>(null);
@@ -83,6 +86,7 @@ export function HomeScreen({ navigation }: Props) {
   const [offersRideLoading, setOffersRideLoading] = useState(false);
 
   const offersRideFirstLoadRef = useRef(true);
+  const offersRideRefreshSeqRef = useRef(0);
 
   const driverPendingRideNotifiedRef = useRef<string | null>(null);
 
@@ -99,6 +103,81 @@ export function HomeScreen({ navigation }: Props) {
   const lastNearbyOffersKeyRef = useRef<string>("");
 
   const isFocused = useIsFocused();
+
+  async function refreshMyOffers() {
+    if (!token) return;
+    if (role !== "USER") return;
+
+    try {
+      const res = await apiMyOffers(token);
+      setMyOffers(res.offers);
+    } catch {
+      // silencioso
+    }
+  }
+
+  async function refreshOffersMeta(opts?: { showLoading?: boolean }) {
+    if (!token) return;
+    if (role !== "USER") return;
+    if (!offersRideId) return;
+
+    const mySeq = ++offersRideRefreshSeqRef.current;
+    const showSpinner = opts?.showLoading ?? offersRideFirstLoadRef.current;
+    if (showSpinner) setOffersRideLoading(true);
+
+    try {
+      const rideRes = await apiGetRideById(token, { rideId: offersRideId });
+      if (mySeq !== offersRideRefreshSeqRef.current) return;
+
+      const status = rideRes.ride?.status as string | undefined;
+      const matched = Boolean(rideRes.ride?.matchedDriverId);
+
+      if (!status || status !== "OPEN" || matched) {
+        await clearActiveRideOffersRideId();
+        if (mySeq !== offersRideRefreshSeqRef.current) return;
+        setOffersRideId(null);
+        setOffersRideCount(0);
+        return;
+      }
+
+      const offersRes = await apiGetRideOffers(token, { rideId: offersRideId });
+      if (mySeq !== offersRideRefreshSeqRef.current) return;
+      setOffersRideCount(Array.isArray(offersRes.items) ? offersRes.items.length : 0);
+
+      const items = Array.isArray(offersRes.items) ? offersRes.items : [];
+      for (const it of items) {
+        const driverIdRaw = (it as any)?.driverId;
+        const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
+        if (!driverId) continue;
+
+        const fullNameRaw = (it as any)?.fullName;
+        const fullName = fullNameRaw != null ? String(fullNameRaw) : "";
+
+        if (passengerSeenRideOfferDriverIdsRef.current.has(driverId)) continue;
+        passengerSeenRideOfferDriverIdsRef.current.add(driverId);
+
+        const eventId = `RIDE_OFFERED:${offersRideId}:${driverId}`;
+        void notifyAndPlayInAppOnce({
+          eventId,
+          soundName: "aceptar_servicio",
+          title: "Nueva oferta",
+          body: fullName ? `${fullName} se ofreció.` : "Un ejecutivo se ofreció.",
+          data: { rideId: offersRideId, driverId, type: "RIDE_OFFERED" },
+        });
+      }
+
+      passengerRideOffersInitializedRef.current = true;
+    } catch {
+      await clearActiveRideOffersRideId();
+      if (mySeq !== offersRideRefreshSeqRef.current) return;
+      setOffersRideId(null);
+      setOffersRideCount(0);
+    } finally {
+      if (mySeq !== offersRideRefreshSeqRef.current) return;
+      if (showSpinner) setOffersRideLoading(false);
+      offersRideFirstLoadRef.current = false;
+    }
+  }
 
   useEffect(() => {
     // Resetea "catch-up" al cambiar de usuario/rol.
@@ -354,8 +433,8 @@ export function HomeScreen({ navigation }: Props) {
       }
 
       const [reqRes, offersRes] = await Promise.allSettled([
-        apiDriverNearbyRideRequests(token, { radiusM: 2000, take: 10 }),
-        apiNearbyOffers(token, { lat: coords.lat, lng: coords.lng, radiusM: 2000 }),
+        apiDriverNearbyRideRequests(token, { radiusM: matchingRadiusM, take: 10 }),
+        apiNearbyOffers(token, { lat: coords.lat, lng: coords.lng, radiusM: matchingRadiusM }),
       ]);
 
       if (reqRes.status === "fulfilled") {
@@ -364,8 +443,10 @@ export function HomeScreen({ navigation }: Props) {
           .map((it: any) => {
             const idRaw = it?.id ?? it?.rideId ?? it?.ride?.id;
             const id = idRaw != null ? String(idRaw) : "";
-            const updatedAt = it?.updatedAt != null ? String(it.updatedAt) : "";
-            return `${id}@${updatedAt}`;
+            const myOfferStatus = it?.myOffer?.status != null ? String(it.myOffer.status) : "";
+            const myOfferUpdatedAt = it?.myOffer?.updatedAt != null ? String(it.myOffer.updatedAt) : "";
+            const distanceMeters = Number.isFinite(Number(it?.distanceMeters)) ? String(Math.round(Number(it.distanceMeters))) : "";
+            return `${id}@${myOfferStatus}@${myOfferUpdatedAt}@${distanceMeters}`;
           })
           .join("|");
         if (key !== lastNearbyRequestsKeyRef.current) {
@@ -385,7 +466,8 @@ export function HomeScreen({ navigation }: Props) {
             const idRaw = it?.offerId ?? it?.id;
             const id = idRaw != null ? String(idRaw) : "";
             const updatedAt = it?.createdAt != null ? String(it.createdAt) : "";
-            return `${id}@${updatedAt}`;
+            const distanceMeters = Number.isFinite(Number(it?.distanceMeters)) ? String(Math.round(Number(it.distanceMeters))) : "";
+            return `${id}@${updatedAt}@${distanceMeters}`;
           })
           .join("|");
         if (key !== lastNearbyOffersKeyRef.current) {
@@ -436,29 +518,16 @@ export function HomeScreen({ navigation }: Props) {
     if (role === "USER") {
       void (async () => {
         setOffersLoading(true);
-        try {
-          const res = await apiMyOffers(token);
-          setMyOffers(res.offers);
-        } catch {
-          // silencioso
-        } finally {
-          setOffersLoading(false);
-        }
+        await refreshMyOffers();
+        setOffersLoading(false);
       })();
     }
     const t = setInterval(() => {
       void refreshRide({ showLoading: false });
       if (role === "USER") {
-        void (async () => {
-          try {
-            const res = await apiMyOffers(token);
-            setMyOffers(res.offers);
-          } catch {
-            // ignore
-          }
-        })();
+        void refreshMyOffers();
       }
-    }, 8000);
+    }, 4000);
 
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -489,77 +558,12 @@ export function HomeScreen({ navigation }: Props) {
     if (role !== "USER") return;
     if (!offersRideId) return;
 
-    let alive = true;
-
-    const tokenStr = token;
-    const rideId = offersRideId;
-
-    async function refreshOffersMeta(currentToken: string, currentRideId: string) {
-      const showSpinner = offersRideFirstLoadRef.current;
-      if (showSpinner) setOffersRideLoading(true);
-      try {
-        const rideRes = await apiGetRideById(currentToken, { rideId: currentRideId });
-        if (!alive) return;
-        const status = rideRes.ride?.status as string | undefined;
-        const matched = Boolean(rideRes.ride?.matchedDriverId);
-
-        if (!status || status !== "OPEN" || matched) {
-          await clearActiveRideOffersRideId();
-          if (!alive) return;
-          setOffersRideId(null);
-          setOffersRideCount(0);
-          return;
-        }
-
-        const offersRes = await apiGetRideOffers(currentToken, { rideId: currentRideId });
-        if (!alive) return;
-        setOffersRideCount(Array.isArray(offersRes.items) ? offersRes.items.length : 0);
-
-        // Caso 2 (cliente): por cada ejecutivo que se ofrece -> sonar `aceptar_servicio`
-        // y mostrar notificación (silenciosa) en la barra.
-        const items = Array.isArray(offersRes.items) ? offersRes.items : [];
-        for (const it of items) {
-          const driverIdRaw = (it as any)?.driverId;
-          const driverId = driverIdRaw != null ? String(driverIdRaw) : "";
-          if (!driverId) continue;
-
-          const fullNameRaw = (it as any)?.fullName;
-          const fullName = fullNameRaw != null ? String(fullNameRaw) : "";
-
-          if (passengerSeenRideOfferDriverIdsRef.current.has(driverId)) continue;
-          passengerSeenRideOfferDriverIdsRef.current.add(driverId);
-
-          const eventId = `RIDE_OFFERED:${currentRideId}:${driverId}`;
-          void notifyAndPlayInAppOnce({
-            eventId,
-            soundName: "aceptar_servicio",
-            title: "Nueva oferta",
-            body: fullName ? `${fullName} se ofreció.` : "Un ejecutivo se ofreció.",
-            data: { rideId: currentRideId, driverId, type: "RIDE_OFFERED" },
-          });
-        }
-
-        passengerRideOffersInitializedRef.current = true;
-      } catch {
-        // Si falla (por ejemplo ride borrado), limpiamos el puntero para no quedar clavados.
-        await clearActiveRideOffersRideId();
-        if (!alive) return;
-        setOffersRideId(null);
-        setOffersRideCount(0);
-      } finally {
-        if (!alive) return;
-        if (showSpinner) setOffersRideLoading(false);
-        offersRideFirstLoadRef.current = false;
-      }
-    }
-
-    void refreshOffersMeta(tokenStr, rideId);
+    void refreshOffersMeta({ showLoading: true });
     const t = setInterval(() => {
-      void refreshOffersMeta(tokenStr, rideId);
-    }, 5000);
+      void refreshOffersMeta({ showLoading: false });
+    }, 3000);
 
     return () => {
-      alive = false;
       clearInterval(t);
     };
   }, [token, isFocused, role, offersRideId]);
@@ -584,7 +588,7 @@ export function HomeScreen({ navigation }: Props) {
 
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, isFocused, role]);
+  }, [token, isFocused, role, matchingRadiusM]);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -658,6 +662,68 @@ export function HomeScreen({ navigation }: Props) {
       void playInAppSoundOnce({ eventId: `OFFER_AVAILABLE:${id}`, soundName: "disponibles" });
     }
   }, [nearbyOffers, isFocused, role, token]);
+
+  const handleRealtimeNearbyChange = (payload: any) => {
+    if (!isFocused) return;
+    if (role !== "DRIVER") return;
+
+    const type = typeof payload?.type === "string" ? payload.type : "";
+    if (type !== "RIDE_AVAILABLE" && type !== "OFFER_AVAILABLE") return;
+    void refreshNearbyRequests({ showLoading: false });
+  };
+
+  const handleRealtimeRideChange = (payload: any) => {
+    if (!isFocused) return;
+
+    const rideIdFromPayload = payload?.rideId != null ? String(payload.rideId) : "";
+    void refreshRide({ showLoading: false });
+
+    if (role === "USER" && offersRideId && (!rideIdFromPayload || rideIdFromPayload === offersRideId)) {
+      void refreshOffersMeta({ showLoading: false });
+    }
+
+    if (role === "USER") {
+      void refreshMyOffers();
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+
+    const cleanups = [
+      subscribeRealtimeEvent("ride:changed", handleRealtimeRideChange),
+      subscribeRealtimeEvent("ride:matched", handleRealtimeRideChange),
+      subscribeRealtimeEvent("ride:offers:changed", handleRealtimeRideChange),
+      subscribeRealtimeEvent("driver:nearby:changed", handleRealtimeNearbyChange),
+    ];
+
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [token, isFocused, role, offersRideId, matchingRadiusM]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (!isFocused) return;
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      void refreshRide({ showLoading: false });
+
+      if (role === "DRIVER") {
+        void refreshNearbyRequests({ showLoading: false });
+      }
+
+      if (role === "USER") {
+        void refreshMyOffers();
+        if (offersRideId) void refreshOffersMeta({ showLoading: false });
+      }
+    });
+
+    return () => {
+      sub.remove();
+    };
+  }, [token, isFocused, role, offersRideId, matchingRadiusM]);
 
 
   useEffect(() => {
@@ -1491,11 +1557,17 @@ export function HomeScreen({ navigation }: Props) {
       {role === "DRIVER" ? (
         <Card style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="list-outline" size={18} color={colors.gold} />
-            <Text style={styles.sectionTitle}>Servicios solicitados</Text>
+            <View style={styles.sectionTitleMain}>
+              <Ionicons name="list-outline" size={18} color={colors.gold} />
+              <Text style={styles.sectionTitle}>Servicios solicitados</Text>
+            </View>
+
+            <Pressable style={styles.sectionActionBtn} onPress={() => void refreshNearbyRequests({ showLoading: true })}>
+              <Ionicons name="refresh" size={16} color={colors.text} />
+            </Pressable>
           </View>
 
-          <Text style={styles.sectionText}>Acá vas a ver solicitudes cercanas y ofrecer tu servicio.</Text>
+          <Text style={styles.sectionText}>Acá vas a ver solicitudes cercanas y ofrecer tu servicio dentro de {Math.round(matchingRadiusM)} m.</Text>
 
           {nearbyRequestsLoading ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 }}>
@@ -1663,11 +1735,17 @@ export function HomeScreen({ navigation }: Props) {
       {role === "DRIVER" ? (
         <Card style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="pricetag-outline" size={18} color={colors.gold} />
-            <Text style={styles.sectionTitle}>Contraofertas cercanas</Text>
+            <View style={styles.sectionTitleMain}>
+              <Ionicons name="pricetag-outline" size={18} color={colors.gold} />
+              <Text style={styles.sectionTitle}>Contraofertas cercanas</Text>
+            </View>
+
+            <Pressable style={styles.sectionActionBtn} onPress={() => void refreshNearbyRequests({ showLoading: true })}>
+              <Ionicons name="refresh" size={16} color={colors.text} />
+            </Pressable>
           </View>
 
-          <Text style={styles.sectionText}>Se muestran dentro de 2 km (2000 m).</Text>
+          <Text style={styles.sectionText}>Se muestran dentro del radio global de {Math.round(matchingRadiusM)} m.</Text>
 
           {nearbyOffersLoading ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 }}>
@@ -1910,7 +1988,24 @@ const styles = StyleSheet.create({
   sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
+  },
+  sectionTitleMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  sectionActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
   sectionTitle: {
     color: colors.text,

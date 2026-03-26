@@ -8,6 +8,7 @@ import { env } from "../../utils/env";
 import { effectiveBaseFare } from "../config/appConfig.service";
 import { ensureDriverHasMinCredits } from "../credits/credits.service";
 import { getFixedZonePriceForTrip } from "../zones/zones.service";
+import { emitToUser, emitToUsers } from "../../realtime/realtime";
 
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
 
@@ -266,6 +267,12 @@ export async function createOffer(params: {
         .sort((a, b) => a.distanceMeters - b.distanceMeters)
         .slice(0, 50);
 
+      emitToUsers(
+        targets.map((t) => t.userId),
+        "driver:nearby:changed",
+        { type: "OFFER_AVAILABLE", offerId: offer.id, eventId: `OFFER_AVAILABLE:${offer.id}` }
+      );
+
       await Promise.all(
         targets.map((t) =>
           sendPushToUser({
@@ -512,6 +519,8 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
       eventId: `OFFER_COMMITTED:${offer.id}:${driver.id}`,
     },
   });
+  emitToUser(offer.passenger.userId, "ride:changed", { rideId: created.ride.id, type: "OFFER_COMMITTED" });
+  emitToUser(driver.userId, "ride:changed", { rideId: created.ride.id, type: "OFFER_COMMITTED" });
 
   void sendPushToAdmins({
     title: "Contraoferta aceptada",

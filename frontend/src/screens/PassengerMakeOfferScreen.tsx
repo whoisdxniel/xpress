@@ -21,6 +21,7 @@ import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { ApiError } from "../lib/api";
 import { apiGetPublicZones, type PublicZone } from "../config/config.api";
 import { buildWhatsappLink } from "../utils/whatsapp";
+import { getMatchingRadiusM } from "../config/matchingRadius";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PassengerMakeOffer">;
 
@@ -38,6 +39,7 @@ function toLatLng(p: MapPoint): LatLng {
 export function PassengerMakeOfferScreen({ navigation }: Props) {
   const auth = useAuth();
   const token = auth.token;
+  const matchingRadiusM = getMatchingRadiusM(auth.appConfig);
 
   const [zones, setZones] = useState<PublicZone[]>([]);
 
@@ -329,7 +331,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         pickup,
         dropoff,
         offeredPrice: offeredPriceNumber,
-        searchRadiusM: 5000,
+        searchRadiusM: matchingRadiusM,
       });
 
       Alert.alert("Listo", "Tu contraoferta fue publicada.");
@@ -463,7 +465,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
               })}
             </View>
 
-            <Text style={styles.line}>Radio de búsqueda: 5 km</Text>
+            <Text style={styles.line}>Radio de búsqueda: {Math.round(matchingRadiusM)} m</Text>
 
             {distanceMeters != null ? <Text style={styles.line}>Distancia estimada: {Math.round(distanceMeters)} m</Text> : null}
 

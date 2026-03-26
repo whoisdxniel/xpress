@@ -54,3 +54,15 @@ export function emitToUser(userId: string, event: string, payload: unknown) {
   if (!io) return;
   io.to(userRoom(userId)).emit(event, payload);
 }
+
+export function emitToUsers(userIds: Iterable<string>, event: string, payload: unknown) {
+  if (!io) return;
+
+  const seen = new Set<string>();
+  for (const userId of userIds) {
+    const normalized = typeof userId === "string" ? userId.trim() : "";
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    io.to(userRoom(normalized)).emit(event, payload);
+  }
+}

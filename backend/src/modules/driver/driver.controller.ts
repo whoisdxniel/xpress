@@ -7,6 +7,7 @@ import { chargeDriverCreditsForCompletedRide } from "../credits/credits.service"
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
 import { effectiveBaseFare } from "../config/appConfig.service";
+import { emitToUser } from "../../realtime/realtime";
 
 function pricingServiceTypeFor(serviceTypeWanted: ServiceType): ServiceType {
   return serviceTypeWanted;
@@ -103,6 +104,9 @@ export async function driverAcceptRideController(req: Request, res: Response) {
     data: { status: "ACCEPTED", acceptedAt: new Date() },
   });
 
+  emitToUser(ride.passenger.userId, "ride:changed", { rideId: updated.id, type: "RIDE_ACCEPTED" });
+  emitToUser(userId, "ride:changed", { rideId: updated.id, type: "RIDE_ACCEPTED" });
+
   void sendPushToUser({
     userId: ride.passenger.userId,
     title: "Servicio aceptado",
@@ -140,6 +144,9 @@ export async function driverStartRideController(req: Request, res: Response) {
     where: { id: ride.id },
     data: { status: "IN_PROGRESS", startedAt: new Date() },
   });
+
+  emitToUser(ride.passenger.userId, "ride:changed", { rideId: updated.id, type: "RIDE_STARTED" });
+  emitToUser(userId, "ride:changed", { rideId: updated.id, type: "RIDE_STARTED" });
 
   void sendPushToUser({
     userId: ride.passenger.userId,
@@ -267,6 +274,8 @@ export async function driverNotifyArrivedController(req: Request, res: Response)
 
   const eventId = `DRIVER_ARRIVED:${ride.id}:${now.getTime()}`;
 
+  emitToUser(ride.passenger.userId, "ride:changed", { rideId: ride.id, type: "DRIVER_ARRIVED", eventId });
+
   const first = await sendPushToUser({
     userId: ride.passenger.userId,
     title: "Tu ejecutivo está en el lugar",
@@ -317,6 +326,9 @@ export async function driverCompleteRideController(req: Request, res: Response) 
     where: { id: ride.id },
     data: { status: "COMPLETED", completedAt: now, driverCompletedConfirmedAt: now },
   });
+
+  emitToUser(ride.passenger.userId, "ride:changed", { rideId: closed.id, type: "RIDE_COMPLETED" });
+  emitToUser(userId, "ride:changed", { rideId: closed.id, type: "RIDE_COMPLETED" });
 
   // Descontar créditos al chofer (idempotente). (Se deja para lo último: flag)
   void chargeDriverCreditsForCompletedRide({ rideId: closed.id, now });

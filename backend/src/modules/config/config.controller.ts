@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getAppConfig } from "./appConfig.service";
+import { getAppConfig, normalizeMatchingRadiusM } from "./appConfig.service";
 import { prisma } from "../../db/prisma";
 
 export async function getPublicAppConfigController(_req: Request, res: Response) {
@@ -16,6 +16,7 @@ export async function getPublicAppConfigController(_req: Request, res: Response)
       id: cfg.id,
       fxCopPerUsd: Number((cfg as any).fxCopPerUsd ?? 0),
       fxCopPerVes: Number((cfg as any).fxCopPerVes ?? 0),
+      matchingRadiusM: normalizeMatchingRadiusM((cfg as any).matchingRadiusM),
 
       zoeWhatsappPhone: text((cfg as any).zoeWhatsappPhone),
 

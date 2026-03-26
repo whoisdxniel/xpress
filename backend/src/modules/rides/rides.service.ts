@@ -8,7 +8,7 @@ import { chargeDriverCreditsForCompletedRide, ensureDriverHasMinCredits } from "
 import { env } from "../../utils/env";
 import { calculateFare } from "../../utils/fare";
 import { effectiveBaseFare } from "../config/appConfig.service";
-import { getDrivingTableDistancesMeters, resolveDrivingMetrics } from "../../utils/directions";
+import { getDrivingTableDistancesMeters, normalizeRoutePathInput, resolveDrivingMetrics } from "../../utils/directions";
 import { getFixedZonePriceForTrip } from "../zones/zones.service";
 
 const DRIVER_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
@@ -28,6 +28,11 @@ function routeUnavailableRide() {
     error: "No se pudo calcular la ruta real en este momento. Intentá nuevamente.",
     code: "ROUTE_UNAVAILABLE" as const,
   };
+}
+
+function positiveIntOrNull(value: unknown) {
+  const raw = Math.floor(Number(value));
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
 export async function getActiveRideForRequester(params: { requester: { id: string; role: "ADMIN" | "USER" | "DRIVER" } }) {
@@ -309,17 +314,24 @@ export async function createRide(params: {
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
 
-  const route = await resolveDrivingMetrics({
-    from: { lat: params.pickup.lat, lng: params.pickup.lng },
-    to: { lat: params.dropoff.lat, lng: params.dropoff.lng },
-    distanceMeters: params.distanceMeters,
-    durationSeconds: params.durationSeconds,
-    routePath: params.routePath,
-  });
-  if (!route) return routeUnavailableRide();
+  const route = fixed.ok
+    ? null
+    : await resolveDrivingMetrics({
+        from: { lat: params.pickup.lat, lng: params.pickup.lng },
+        to: { lat: params.dropoff.lat, lng: params.dropoff.lng },
+        distanceMeters: params.distanceMeters,
+        durationSeconds: params.durationSeconds,
+        routePath: params.routePath,
+      });
+  if (!fixed.ok && !route) return routeUnavailableRide();
 
-  const dist = route.distanceMeters;
-  const durationSeconds = route.durationSeconds && route.durationSeconds > 0 ? route.durationSeconds : undefined;
+  const dist = fixed.ok ? positiveIntOrNull(params.distanceMeters) ?? 1 : route!.distanceMeters;
+  const durationSeconds = fixed.ok
+    ? positiveIntOrNull(params.durationSeconds) ?? undefined
+    : route!.durationSeconds && route!.durationSeconds > 0
+      ? route!.durationSeconds
+      : undefined;
+  const routePath = fixed.ok ? normalizeRoutePathInput(params.routePath ?? null) : route!.path;
 
   const surcharge =
     (params.wantsAC ? Number(pricing.acSurcharge) : 0) +
@@ -381,7 +393,7 @@ export async function createRide(params: {
       dropoffAddress: params.dropoff.address,
       distanceMeters: dist,
       durationSeconds,
-      routePath: route.path as any,
+      routePath: routePath as any,
       wantsAC: params.wantsAC,
       wantsTrunk: params.wantsTrunk,
       wantsPets: params.wantsPets,
@@ -983,12 +995,18 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
 
   let updated;
   let withdrawnOffers: Array<{ rideId: string; passengerUserId: string }> = [];
+  let rejectedDrivers: string[] = [];
   try {
     const txResult = await prisma.$transaction(async (tx) => {
       const fresh = await tx.rideRequest.findUnique({ where: { id: ride.id } });
       if (!fresh || fresh.status !== "OPEN" || fresh.matchedDriverId) {
         throw new Error("Ride is not selectable");
       }
+
+      const sameRideRejected = await tx.rideCandidate.findMany({
+        where: { rideId: ride.id, driverId: { not: driver.id }, status: RideCandidateStatus.OFFERED },
+        select: { driver: { select: { userId: true } } },
+      });
 
       await tx.rideCandidate.update({
         where: { id: offer.id },
@@ -1041,6 +1059,7 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
 
       return {
         ride: updatedRide,
+        rejectedDrivers: sameRideRejected.map((item) => item.driver.userId).filter(Boolean),
         withdrawnOffers: otherOffered
           .map((x) => ({ rideId: x.rideId, passengerUserId: x.ride.passenger.userId }))
           .filter((x) => Boolean(x.passengerUserId)),
@@ -1048,6 +1067,7 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
     });
 
     updated = txResult.ride;
+    rejectedDrivers = txResult.rejectedDrivers;
     withdrawnOffers = txResult.withdrawnOffers;
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Ride is not selectable" };
@@ -1058,6 +1078,8 @@ export async function selectDriver(params: { userId: string; rideId: string; dri
   emitToUser(params.userId, "ride:offers:changed", { rideId: updated.id });
   emitToUser(params.userId, "ride:changed", { rideId: updated.id, type: "RIDE_MATCHED" });
   emitToUser(driver.userId, "ride:changed", { rideId: updated.id, type: "RIDE_MATCHED" });
+  emitToUsers(rejectedDrivers, "ride:changed", { rideId: updated.id, type: "RIDE_NOT_SELECTED" });
+  emitToUsers(rejectedDrivers, "driver:nearby:changed", { rideId: updated.id, type: "RIDE_SELECTION_CHANGED" });
 
   for (const item of withdrawnOffers) {
     emitToUser(item.passengerUserId, "ride:offers:changed", { rideId: item.rideId });

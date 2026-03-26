@@ -375,6 +375,35 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     });
   }
 
+  async function ensureRoutePreview(opts?: { showError?: boolean }) {
+    if (!center || !dropoff) return null;
+    if (routePreview?.routePath?.length && routePreview.distanceMeters > 0) return routePreview;
+
+    const mySeq = ++routePreviewSeqRef.current;
+    setRoutePreviewLoading(true);
+
+    try {
+      const route = await getDrivingRoute({ from: center, to: dropoff });
+      if (mySeq !== routePreviewSeqRef.current) return null;
+
+      const nextRoute = route
+        ? {
+            distanceMeters: route.distanceMeters,
+            durationSeconds: route.durationSeconds,
+            routePath: route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })),
+          }
+        : null;
+
+      setRoutePreview(nextRoute);
+      if (!nextRoute && opts?.showError) {
+        setError("No se pudo trazar la ruta real en este momento. Reintentá.");
+      }
+      return nextRoute;
+    } finally {
+      if (mySeq === routePreviewSeqRef.current) setRoutePreviewLoading(false);
+    }
+  }
+
   async function requestEstimate(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean }) {
     if (!token || !center || !dropoff) return null;
 
@@ -458,6 +487,9 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
       return;
     }
 
+    const ensuredRoute = await ensureRoutePreview({ showError: true });
+    if (!ensuredRoute) return;
+
     await requestEstimate({ showLoading: true, openWhatsappOnNegotiate: true });
   }
 
@@ -485,6 +517,10 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     setError(null);
 
     try {
+      if (!routePreview?.routePath?.length) {
+        await ensureRoutePreview({ showError: false });
+      }
+
       const addr = await ensureAddresses({ pickup: center, dropoff });
 
       const created = await apiCreateRide(token, {

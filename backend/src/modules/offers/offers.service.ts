@@ -2,7 +2,7 @@ import { DriverStatus, OfferStatus, RideStatus, ServiceType } from "@prisma/clie
 import { prisma } from "../../db/prisma";
 import { boundingBoxKm, haversineDistanceMeters } from "../../utils/geo";
 import { sendPushToAdmins, sendPushToUser } from "../notifications/notifications.service";
-import { resolveDrivingMetrics } from "../../utils/directions";
+import { normalizeRoutePathInput, resolveDrivingMetrics } from "../../utils/directions";
 import { calculateFare } from "../../utils/fare";
 import { env } from "../../utils/env";
 import { effectiveBaseFare } from "../config/appConfig.service";
@@ -29,6 +29,77 @@ function routeUnavailableEstimate() {
   };
 }
 
+function positiveIntOrNull(value: unknown) {
+  const raw = Math.floor(Number(value));
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
+
+async function getNearbyDriverUserIdsForOffer(offer: {
+  id: string;
+  pickupLat: unknown;
+  pickupLng: unknown;
+  searchRadiusM: unknown;
+  serviceTypeWanted: ServiceType;
+}) {
+  const pickup = { lat: Number(offer.pickupLat), lng: Number(offer.pickupLng) };
+  const radiusM = Math.max(250, Math.min(50_000, Number(offer.searchRadiusM ?? 5000)));
+  const radiusKm = radiusM / 1000;
+  const box = boundingBoxKm(pickup, radiusKm);
+  const freshSince = driverLocationFreshSince();
+
+  const drivers = await prisma.driverProfile.findMany({
+    where: {
+      status: DriverStatus.APPROVED,
+      isAvailable: true,
+      user: { is: { isActive: true } },
+      serviceType: offer.serviceTypeWanted,
+      location: {
+        is: {
+          updatedAt: { gte: freshSince },
+          lat: { gte: box.minLat, lte: box.maxLat },
+          lng: { gte: box.minLng, lte: box.maxLng },
+        },
+      },
+      matchedRides: {
+        none: {
+          status: { in: [RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS] },
+        },
+      },
+    },
+    select: {
+      userId: true,
+      location: { select: { lat: true, lng: true } },
+    },
+    take: 200,
+  });
+
+  return drivers
+    .map((d) => {
+      const loc = d.location ? { lat: Number(d.location.lat), lng: Number(d.location.lng) } : null;
+      const dist = loc ? haversineDistanceMeters(pickup, loc) : Number.NaN;
+      return { userId: d.userId, distanceMeters: Math.round(dist) };
+    })
+    .filter((x) => Number.isFinite(x.distanceMeters) && x.distanceMeters <= radiusM)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 50)
+    .map((x) => x.userId);
+}
+
+async function emitNearbyOfferChange(
+  offer: {
+    id: string;
+    pickupLat: unknown;
+    pickupLng: unknown;
+    searchRadiusM: unknown;
+    serviceTypeWanted: ServiceType;
+  },
+  type: "OFFER_AVAILABLE" | "OFFER_UNAVAILABLE"
+) {
+  const userIds = await getNearbyDriverUserIdsForOffer(offer);
+  if (!userIds.length) return;
+  emitToUsers(userIds, "driver:nearby:changed", { type, offerId: offer.id, eventId: `${type}:${offer.id}` });
+}
+
 export async function listMyOffers(params: { userId: string }) {
   const passenger = await prisma.passengerProfile.findUnique({ where: { userId: params.userId }, select: { id: true } });
   if (!passenger) return { ok: false as const, error: "Passenger profile not found" };
@@ -52,6 +123,8 @@ export async function cancelOffer(params: { userId: string; offerId: string }) {
   if (offer.status !== OfferStatus.OPEN) return { ok: false as const, error: "Offer is not cancellable" };
 
   const updated = await prisma.rideOffer.update({ where: { id: offer.id }, data: { status: OfferStatus.CANCELLED } });
+
+  void emitNearbyOfferChange(updated, "OFFER_UNAVAILABLE");
 
   void sendPushToAdmins({
     title: "Contraoferta cancelada",
@@ -95,6 +168,29 @@ export async function estimateOffer(params: {
   const pricingType = pricingServiceTypeFor(params.serviceTypeWanted as ServiceType);
   const pricing = await prisma.pricingConfig.findUnique({ where: { serviceType: pricingType } });
   if (!pricing) return { ok: false as const, error: "Pricing not configured for this service type" };
+
+  if (fixed.ok) {
+    const fixedAmount = Math.round(fixed.amountCop * 100) / 100;
+    return {
+      ok: true as const,
+      distanceMeters: positiveIntOrNull(params.distanceMeters) ?? 1,
+      durationSeconds: positiveIntOrNull(params.durationSeconds) ?? undefined,
+      routePath: normalizeRoutePathInput(params.routePath ?? null),
+      estimatedPrice: fixedAmount,
+      isFixedPrice: true,
+      fixedPriceCop: fixedAmount,
+      pricing: {
+        baseFare: Number(pricing.baseFare),
+        perKm: Number(pricing.perKm),
+        includedMeters: Number((pricing as any).includedMeters ?? 0),
+        stepMeters: Number((pricing as any).stepMeters ?? 0),
+        stepPrice: Number((pricing as any).stepPrice ?? 0),
+        acSurcharge: Number(pricing.acSurcharge),
+        trunkSurcharge: Number(pricing.trunkSurcharge),
+        petsSurcharge: Number(pricing.petsSurcharge),
+      },
+    };
+  }
 
   const route = await resolveDrivingMetrics({
     from: { lat: params.pickup.lat, lng: params.pickup.lng },
@@ -141,9 +237,9 @@ export async function estimateOffer(params: {
     distanceMeters: dist,
     durationSeconds: route.durationSeconds,
     routePath: route.path,
-    estimatedPrice: Math.round((fixed.ok ? fixed.amountCop : estimated) * 100) / 100,
-    isFixedPrice: fixed.ok,
-    fixedPriceCop: fixed.ok ? Math.round(fixed.amountCop * 100) / 100 : null,
+    estimatedPrice: Math.round(estimated * 100) / 100,
+    isFixedPrice: false,
+    fixedPriceCop: null,
     pricing: {
       baseFare,
       perKm: Number(pricing.perKm),
@@ -242,58 +338,18 @@ export async function createOffer(params: {
   // Fire-and-forget: no bloquea la creación.
   void (async () => {
     try {
-      const pickup = { lat: Number(offer.pickupLat), lng: Number(offer.pickupLng) };
-      const radiusM = Math.max(250, Math.min(50_000, Number(offer.searchRadiusM ?? params.searchRadiusM ?? 5000)));
-      const radiusKm = radiusM / 1000;
-      const box = boundingBoxKm(pickup, radiusKm);
-      const freshSince = driverLocationFreshSince();
-
-      const drivers = await prisma.driverProfile.findMany({
-        where: {
-          status: DriverStatus.APPROVED,
-          isAvailable: true,
-          user: { is: { isActive: true } },
-          serviceType: offer.serviceTypeWanted,
-          location: {
-            is: {
-              updatedAt: { gte: freshSince },
-              lat: { gte: box.minLat, lte: box.maxLat },
-              lng: { gte: box.minLng, lte: box.maxLng },
-            },
-          },
-          matchedRides: {
-            none: {
-              status: { in: [RideStatus.ASSIGNED, RideStatus.ACCEPTED, RideStatus.MATCHED, RideStatus.IN_PROGRESS] },
-            },
-          },
-        },
-        select: {
-          userId: true,
-          location: { select: { lat: true, lng: true } },
-        },
-        take: 200,
-      });
-
-      const targets = drivers
-        .map((d) => {
-          const loc = d.location ? { lat: Number(d.location.lat), lng: Number(d.location.lng) } : null;
-          const dist = loc ? haversineDistanceMeters(pickup, loc) : Number.NaN;
-          return { userId: d.userId, distanceMeters: Math.round(dist) };
-        })
-        .filter((x) => Number.isFinite(x.distanceMeters) && x.distanceMeters <= radiusM)
-        .sort((a, b) => a.distanceMeters - b.distanceMeters)
-        .slice(0, 50);
+      const targets = await getNearbyDriverUserIdsForOffer(offer);
 
       emitToUsers(
-        targets.map((t) => t.userId),
+        targets,
         "driver:nearby:changed",
         { type: "OFFER_AVAILABLE", offerId: offer.id, eventId: `OFFER_AVAILABLE:${offer.id}` }
       );
 
       await Promise.all(
-        targets.map((t) =>
+        targets.map((userId) =>
           sendPushToUser({
-            userId: t.userId,
+            userId,
             title: "Contraoferta cerca",
             body: "Hay una contraoferta disponible.",
             soundName: "disponibles",
@@ -536,6 +592,7 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
       eventId: `OFFER_COMMITTED:${offer.id}:${driver.id}`,
     },
   });
+  void emitNearbyOfferChange(offer, "OFFER_UNAVAILABLE");
   emitToUser(offer.passenger.userId, "ride:changed", { rideId: created.ride.id, type: "OFFER_COMMITTED" });
   emitToUser(driver.userId, "ride:changed", { rideId: created.ride.id, type: "OFFER_COMMITTED" });
 

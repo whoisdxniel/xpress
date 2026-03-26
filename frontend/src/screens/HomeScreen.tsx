@@ -666,9 +666,6 @@ export function HomeScreen({ navigation }: Props) {
   const handleRealtimeNearbyChange = (payload: any) => {
     if (!isFocused) return;
     if (role !== "DRIVER") return;
-
-    const type = typeof payload?.type === "string" ? payload.type : "";
-    if (type !== "RIDE_AVAILABLE" && type !== "OFFER_AVAILABLE") return;
     void refreshNearbyRequests({ showLoading: false });
   };
 

@@ -271,8 +271,40 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [fitCoords]);
 
+  async function ensureRouteData(opts?: { showError?: boolean }) {
+    if (!pickup || !dropoff) return null;
+    if (routePath?.length && distanceMeters != null && distanceMeters > 0) {
+      return { routePath, distanceMeters, durationSeconds };
+    }
+
+    setRouteLoading(true);
+    try {
+      const route = await getDrivingRoute({ from: pickup, to: dropoff });
+      const nextPath = route?.path?.map((p) => ({ lat: p.latitude, lng: p.longitude })) ?? null;
+      const nextDistance = route?.distanceMeters ?? null;
+      const nextDuration = route?.durationSeconds ?? null;
+
+      setRoutePath(nextPath);
+      setDistanceMeters(nextDistance);
+      setDurationSeconds(nextDuration);
+
+      if ((!nextPath || nextDistance == null) && opts?.showError) {
+        setError("No se pudo trazar la ruta real en este momento. Reintentá.");
+      }
+
+      return nextPath && nextDistance != null
+        ? { routePath: nextPath, distanceMeters: nextDistance, durationSeconds: nextDuration }
+        : null;
+    } finally {
+      setRouteLoading(false);
+    }
+  }
+
   async function estimateNow(opts?: { showLoading?: boolean; openWhatsappOnNegotiate?: boolean; autofillPrice?: boolean }) {
     if (!token || !pickup || !dropoff) return;
+
+    const ensuredRoute = await ensureRouteData({ showError: true });
+    if (!ensuredRoute) return;
 
     const mySeq = ++estimateSeqRef.current;
     const showLoading = opts?.showLoading ?? true;
@@ -285,9 +317,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         serviceTypeWanted,
         pickup,
         dropoff,
-        distanceMeters: distanceMeters ?? undefined,
-        durationSeconds: durationSeconds ?? undefined,
-        routePath: routePath ?? undefined,
+        distanceMeters: ensuredRoute.distanceMeters ?? undefined,
+        durationSeconds: ensuredRoute.durationSeconds ?? undefined,
+        routePath: ensuredRoute.routePath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
@@ -343,15 +375,17 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
   async function submit() {
     if (!token || !pickup || !dropoff) return;
 
+    const ensuredRoute = routePath?.length && distanceMeters != null ? { routePath, distanceMeters, durationSeconds } : await ensureRouteData({ showError: false });
+
     // Validación previa: evita publicar ofertas fuera de SC / sin fijo (debe ir a WhatsApp).
     try {
       await apiEstimateOffer(token, {
         serviceTypeWanted,
         pickup,
         dropoff,
-        distanceMeters: distanceMeters ?? undefined,
-        durationSeconds: durationSeconds ?? undefined,
-        routePath: routePath ?? undefined,
+        distanceMeters: ensuredRoute?.distanceMeters ?? distanceMeters ?? undefined,
+        durationSeconds: ensuredRoute?.durationSeconds ?? durationSeconds ?? undefined,
+        routePath: ensuredRoute?.routePath ?? routePath ?? undefined,
         wantsAC: false,
         wantsTrunk: false,
         wantsPets: false,
@@ -385,9 +419,9 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
         serviceTypeWanted,
         pickup,
         dropoff,
-        distanceMeters: distanceMeters ?? undefined,
-        durationSeconds: durationSeconds ?? undefined,
-        routePath: routePath ?? undefined,
+        distanceMeters: ensuredRoute?.distanceMeters ?? distanceMeters ?? undefined,
+        durationSeconds: ensuredRoute?.durationSeconds ?? durationSeconds ?? undefined,
+        routePath: ensuredRoute?.routePath ?? routePath ?? undefined,
         offeredPrice: offeredPriceNumber,
         searchRadiusM: matchingRadiusM,
       });

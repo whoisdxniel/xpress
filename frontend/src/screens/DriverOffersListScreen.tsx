@@ -74,8 +74,6 @@ export function DriverOffersListScreen({ navigation }: Props) {
   }, [token, matchingRadiusM]);
 
   const handleRealtimeNearbyChange = (payload: any) => {
-    const type = typeof payload?.type === "string" ? payload.type : "";
-    if (type !== "OFFER_AVAILABLE") return;
     void refresh();
   };
 

@@ -166,14 +166,7 @@ export async function resolveDrivingMetrics(params: {
     };
   }
 
-  const dist = await getDrivingRouteDistanceMeters({ from: params.from, to: params.to });
-  if (!dist) return null;
-
-  return {
-    distanceMeters: dist,
-    durationSeconds: providedDuration,
-    path: providedPath,
-  };
+  return null;
 }
 
 export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; durationSeconds: number; path: RoutePathPoint[] } | null> {

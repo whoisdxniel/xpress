@@ -1,4 +1,5 @@
 export type Coords = { lat: number; lng: number };
+export type TimedCoords = Coords & { ts?: number; accuracy?: number | null };
 
 type DrivingRoute = { distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] };
 
@@ -9,12 +10,14 @@ const FAILURE_CACHE_TTL_MS = 8_000;
 const CACHE_MAX = 250;
 const BUILTIN_OSRM_BASE_URLS = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
 const MAPBOX_DIRECTIONS_BASE_URL = "https://api.mapbox.com/directions/v5/mapbox/driving";
+const MAPBOX_MATCHING_BASE_URL = "https://api.mapbox.com/matching/v5/mapbox/driving";
 
 type CacheEntry<T> = { ts: number; value: T; ttlMs: number };
 
 const routeCache = new Map<string, CacheEntry<DrivingRoute | null>>();
 const distCache = new Map<string, CacheEntry<number | null>>();
 const nearestCache = new Map<string, CacheEntry<Coords | null>>();
+const traceDistCache = new Map<string, CacheEntry<number | null>>();
 
 function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
   const entry = map.get(key);
@@ -46,6 +49,11 @@ function keyFromCoord(coord: Coords): string {
   return `${r(coord.lat)},${r(coord.lng)}`;
 }
 
+function keyFromTrace(points: TimedCoords[]): string {
+  const r = (n: number) => Math.round(n * 1e5) / 1e5;
+  return points.map((point) => `${r(point.lat)},${r(point.lng)},${Math.round((point.ts ?? 0) / 1000)}`).join("|");
+}
+
 function haversineMeters(from: Coords, to: Coords) {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const earthRadius = 6371000;
@@ -75,6 +83,80 @@ function withOriginalEndpoints(path: { latitude: number; longitude: number }[], 
   }
 
   return nextPath;
+}
+
+export function getTraceStraightDistanceMeters(points: Array<Coords | TimedCoords>): number {
+  if (!Array.isArray(points) || points.length < 2) return 0;
+
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    if (!prev || !next) continue;
+    total += haversineMeters(prev, next);
+  }
+
+  return Math.round(total);
+}
+
+function sanitizeTracePoints(points: TimedCoords[]): TimedCoords[] {
+  const out: TimedCoords[] = [];
+  for (const point of points) {
+    if (!point) continue;
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) continue;
+    const prev = out[out.length - 1];
+    if (prev && sameCoord(prev, point)) continue;
+    out.push(point);
+  }
+  return out;
+}
+
+function buildMapMatchingTimestamps(points: TimedCoords[]): string | null {
+  const secs = points.map((point) => Math.floor(Number(point.ts ?? 0) / 1000));
+  if (secs.some((value) => !Number.isFinite(value) || value <= 0)) return null;
+  for (let i = 1; i < secs.length; i += 1) {
+    if (secs[i] <= secs[i - 1]) return null;
+  }
+  return secs.join(";");
+}
+
+function buildMapMatchingRadiuses(points: TimedCoords[]): string {
+  return points
+    .map((point) => {
+      const raw = typeof point.accuracy === "number" && Number.isFinite(point.accuracy) ? point.accuracy : 15;
+      const clamped = Math.max(5, Math.min(50, Math.round(raw)));
+      return String(clamped);
+    })
+    .join(";");
+}
+
+async function fetchMapboxMatchedTraceDistance(points: TimedCoords[]): Promise<number | null> {
+  const token = mapboxAccessToken();
+  if (!token) return null;
+
+  const coords = points.map((point) => `${point.lng},${point.lat}`).join(";");
+  const params = new URLSearchParams({
+    access_token: token,
+    geometries: "geojson",
+    overview: "full",
+    tidy: "true",
+    radiuses: buildMapMatchingRadiuses(points),
+  });
+  const timestamps = buildMapMatchingTimestamps(points);
+  if (timestamps) params.set("timestamps", timestamps);
+
+  const url = `${MAPBOX_MATCHING_BASE_URL}/${coords}.json?${params.toString()}`;
+  const data: any = await fetchJsonWithTimeout(url, DEFAULT_MAPBOX_TIMEOUT_MS);
+  if (!data || (data.code !== "Ok" && data.code !== "NoMatch" && data.code !== "NoSegment")) return null;
+
+  const matchings = Array.isArray(data.matchings) ? data.matchings : [];
+  let total = 0;
+  for (const match of matchings) {
+    const dist = match?.distance;
+    if (typeof dist === "number" && Number.isFinite(dist) && dist > 0) total += dist;
+  }
+
+  return total > 0 ? Math.round(total) : null;
 }
 
 function mapboxAccessToken(): string | null {
@@ -352,5 +434,36 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
   } catch {
     cacheSet(distCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
     return null;
+  }
+}
+
+export async function getMatchedDrivingTraceDistanceMeters(points: TimedCoords[]): Promise<number | null> {
+  const sanitized = sanitizeTracePoints(points).slice(-100);
+  if (sanitized.length < 2) return 0;
+
+  const cacheKey = keyFromTrace(sanitized);
+  const cached = cacheGet(traceDistCache, cacheKey);
+  if (cached !== undefined) return cached;
+
+  try {
+    const matched = await fetchMapboxMatchedTraceDistance(sanitized);
+    if (matched != null && matched > 0) {
+      cacheSet(traceDistCache, cacheKey, matched);
+      return matched;
+    }
+
+    const direct = await getDrivingRouteDistanceMeters({ from: sanitized[0]!, to: sanitized[sanitized.length - 1]! });
+    if (direct != null && direct > 0) {
+      cacheSet(traceDistCache, cacheKey, direct);
+      return direct;
+    }
+
+    const straight = getTraceStraightDistanceMeters(sanitized);
+    cacheSet(traceDistCache, cacheKey, straight, FAILURE_CACHE_TTL_MS);
+    return straight;
+  } catch {
+    const straight = getTraceStraightDistanceMeters(sanitized);
+    cacheSet(traceDistCache, cacheKey, straight, FAILURE_CACHE_TTL_MS);
+    return straight;
   }
 }

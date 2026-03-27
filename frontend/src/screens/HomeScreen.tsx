@@ -48,6 +48,7 @@ import { notifyAndPlayInAppOnce, playInAppSoundOnce } from "../notifications/inc
 import { buildTelUrl, openDialer } from "../utils/phone";
 import { getMatchingRadiusM } from "../config/matchingRadius";
 import { subscribeRealtimeEvent } from "../realtime/socket";
+import { getMatchedDrivingTraceDistanceMeters, getTraceStraightDistanceMeters, type TimedCoords } from "../utils/directions";
 
 const zoeImg = require("../../assets/zoe.png");
 const playstoreImg = require("../../assets/playstore.png");
@@ -202,6 +203,9 @@ export function HomeScreen({ navigation }: Props) {
   const meterWatchRef = useRef<Location.LocationSubscription | null>(null);
   const meterLastCoordsRef = useRef<{ lat: number; lng: number; ts: number; accuracy?: number | null } | null>(null);
   const meterDistanceRef = useRef<number>(0);
+  const meterSyncedDistanceRef = useRef<number>(0);
+  const meterPendingApproxDistanceRef = useRef<number>(0);
+  const meterTracePointsRef = useRef<TimedCoords[]>([]);
   const meterRideIdRef = useRef<string | null>(null);
   const meterLastSentAtRef = useRef<number>(0);
   const meterLastSentDistanceRef = useRef<number>(0);
@@ -748,6 +752,10 @@ export function HomeScreen({ navigation }: Props) {
         meterWatchRef.current = null;
       }
       meterLastCoordsRef.current = null;
+      meterTracePointsRef.current = [];
+      meterSyncedDistanceRef.current = 0;
+      meterPendingApproxDistanceRef.current = 0;
+      meterDistanceRef.current = 0;
       meterSendInFlightRef.current = false;
       meterLastSentAtRef.current = 0;
       meterLastSentDistanceRef.current = 0;
@@ -765,22 +773,52 @@ export function HomeScreen({ navigation }: Props) {
       return 2 * R * Math.asin(Math.sqrt(h));
     };
 
-    const maybeSendMeter = async (distanceMetersRounded: number) => {
+    const appendTracePoint = (point: TimedCoords) => {
+      const trace = meterTracePointsRef.current;
+      const last = trace[trace.length - 1];
+      if (last && last.lat === point.lat && last.lng === point.lng && last.ts === point.ts) return;
+      trace.push(point);
+      if (trace.length > 100) trace.splice(0, trace.length - 100);
+    };
+
+    const maybeSendMeter = async (opts?: { force?: boolean }) => {
       if (!token || !rideId) return;
       if (meterSendInFlightRef.current) return;
+
+      const force = opts?.force ?? false;
+      const approxDistance = Math.max(meterSyncedDistanceRef.current, Math.round(meterSyncedDistanceRef.current + meterPendingApproxDistanceRef.current));
 
       const now = Date.now();
       const minMsBetweenSends = 10_000;
       const minMetersBetweenSends = 25;
 
       const since = now - meterLastSentAtRef.current;
-      const delta = distanceMetersRounded - meterLastSentDistanceRef.current;
+      const delta = approxDistance - meterLastSentDistanceRef.current;
 
-      if (meterLastSentAtRef.current && (since < minMsBetweenSends || delta < minMetersBetweenSends)) return;
+      if (!force && meterLastSentAtRef.current && (since < minMsBetweenSends || delta < minMetersBetweenSends)) return;
+
+      const traceSnapshot = meterTracePointsRef.current.slice();
+      const incrementalDistance = traceSnapshot.length >= 2 ? await getMatchedDrivingTraceDistanceMeters(traceSnapshot) : 0;
+      const candidateDistance = Math.max(
+        meterSyncedDistanceRef.current,
+        Math.round(meterSyncedDistanceRef.current + Math.max(0, incrementalDistance ?? meterPendingApproxDistanceRef.current))
+      );
 
       meterSendInFlightRef.current = true;
       try {
-        const res = await apiDriverUpdateMeter(token, rideId, { meterDistanceMeters: distanceMetersRounded });
+        const res = await apiDriverUpdateMeter(token, rideId, { meterDistanceMeters: candidateDistance });
+        const backendDistance = Math.round(Number(res.ride?.meterDistanceMeters ?? candidateDistance));
+        meterSyncedDistanceRef.current = Math.max(candidateDistance, Number.isFinite(backendDistance) ? backendDistance : 0);
+
+        const currentTrace = meterTracePointsRef.current;
+        const snapshotLastTs = traceSnapshot[traceSnapshot.length - 1]?.ts ?? 0;
+        const traceTail = currentTrace.filter((point) => (point.ts ?? 0) > snapshotLastTs);
+        const anchor = traceSnapshot[traceSnapshot.length - 1] ?? currentTrace[currentTrace.length - 1] ?? null;
+        meterTracePointsRef.current = anchor ? [anchor, ...traceTail] : traceTail;
+        meterPendingApproxDistanceRef.current = getTraceStraightDistanceMeters(meterTracePointsRef.current);
+        meterDistanceRef.current = meterSyncedDistanceRef.current + meterPendingApproxDistanceRef.current;
+        setMeterDistanceMeters(Math.round(meterDistanceRef.current));
+
         setAttentionRide((prev: any | null) => {
           if (!prev || prev.id !== rideId) return prev;
           return {
@@ -790,7 +828,7 @@ export function HomeScreen({ navigation }: Props) {
           };
         });
         meterLastSentAtRef.current = now;
-        meterLastSentDistanceRef.current = distanceMetersRounded;
+        meterLastSentDistanceRef.current = meterSyncedDistanceRef.current;
         setMeterError(null);
       } catch (e) {
         setMeterError(e instanceof Error ? e.message : "No se pudo actualizar el taxímetro");
@@ -808,12 +846,16 @@ export function HomeScreen({ navigation }: Props) {
     if (meterRideIdRef.current !== rideId) {
       // Nuevo servicio: inicializamos desde backend.
       meterRideIdRef.current = rideId || null;
-      meterDistanceRef.current = Number.isFinite(backendMeters) && backendMeters > 0 ? backendMeters : 0;
+      meterSyncedDistanceRef.current = Number.isFinite(backendMeters) && backendMeters > 0 ? backendMeters : 0;
+      meterPendingApproxDistanceRef.current = 0;
+      meterTracePointsRef.current = [];
+      meterDistanceRef.current = meterSyncedDistanceRef.current;
     } else {
       // Reanudar (o re-render): nunca bajar el contador por falta de sincronización.
       const current = Number(meterDistanceRef.current ?? 0);
       const safeBackend = Number.isFinite(backendMeters) ? backendMeters : 0;
-      meterDistanceRef.current = Math.max(current, safeBackend);
+      meterSyncedDistanceRef.current = Math.max(meterSyncedDistanceRef.current, safeBackend);
+      meterDistanceRef.current = Math.max(current, meterSyncedDistanceRef.current + meterPendingApproxDistanceRef.current);
     }
 
     setMeterDistanceMeters(Math.round(meterDistanceRef.current));
@@ -835,7 +877,7 @@ export function HomeScreen({ navigation }: Props) {
         }
 
         // Primer envío para que el precio base quede calculado desde el inicio
-        await maybeSendMeter(Math.round(meterDistanceRef.current));
+        await maybeSendMeter({ force: true });
 
         const sub = await Location.watchPositionAsync(
           {
@@ -861,6 +903,7 @@ export function HomeScreen({ navigation }: Props) {
             const prev = meterLastCoordsRef.current;
             if (!prev) {
               meterLastCoordsRef.current = coords;
+              appendTracePoint(coords);
               return;
             }
 
@@ -899,10 +942,12 @@ export function HomeScreen({ navigation }: Props) {
             // Aceptado: actualizar ancla y sumar.
             meterLastCoordsRef.current = coords;
 
-            meterDistanceRef.current += delta;
+            appendTracePoint(coords);
+            meterPendingApproxDistanceRef.current += delta;
+            meterDistanceRef.current = meterSyncedDistanceRef.current + meterPendingApproxDistanceRef.current;
             const rounded = Math.round(meterDistanceRef.current);
             setMeterDistanceMeters(rounded);
-            void maybeSendMeter(rounded);
+            void maybeSendMeter();
           }
         );
 
@@ -938,7 +983,10 @@ export function HomeScreen({ navigation }: Props) {
     if (attentionRide.isFixedPrice) return;
 
     meterDistanceRef.current = 0;
+    meterSyncedDistanceRef.current = 0;
+    meterPendingApproxDistanceRef.current = 0;
     meterLastCoordsRef.current = null;
+    meterTracePointsRef.current = [];
     meterLastSentAtRef.current = 0;
     meterLastSentDistanceRef.current = 0;
     setMeterDistanceMeters(0);
@@ -983,6 +1031,9 @@ export function HomeScreen({ navigation }: Props) {
 
     const backendMeters = Math.round(Number(attentionRide.meterDistanceMeters ?? 0));
     if (backendMeters > Math.round(meterDistanceRef.current) + 5) {
+      meterSyncedDistanceRef.current = backendMeters;
+      meterPendingApproxDistanceRef.current = 0;
+      meterTracePointsRef.current = meterLastCoordsRef.current ? [meterLastCoordsRef.current] : [];
       meterDistanceRef.current = backendMeters;
       setMeterDistanceMeters(backendMeters);
       // Evita un envío inmediato redundante si el backend ya está más adelante

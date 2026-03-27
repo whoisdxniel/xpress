@@ -406,6 +406,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
   async function ensureRoutePreview(opts?: { showError?: boolean }) {
     if (!center || !dropoff) return null;
     if (routePreviewKey === currentRouteKey && routePreview?.routePath?.length && routePreview.distanceMeters > 0) return routePreview;
+    const showError = opts?.showError ?? true;
 
     const mySeq = ++routePreviewSeqRef.current;
     setRoutePreviewLoading(true);
@@ -424,6 +425,9 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
       setRoutePreview(nextRoute);
       setRoutePreviewKey(nextRoute ? currentRouteKey : null);
+      if (!nextRoute && showError) {
+        setError("No se pudo trazar la ruta en este momento. Reintentá.");
+      }
       return nextRoute;
     } finally {
       if (mySeq === routePreviewSeqRef.current) setRoutePreviewLoading(false);
@@ -443,12 +447,16 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
     try {
       const cachedPayload = currentRoutePayload();
+      const ensuredRoute =
+        cachedPayload.distanceMeters && cachedPayload.routePath?.length
+          ? null
+          : await ensureRoutePreview({ showError: false });
 
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted: wantedType,
         pickup: { lat: center.lat, lng: center.lng },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng },
-        ...cachedPayload,
+        ...currentRoutePayload(ensuredRoute),
       });
       if (mySeq !== estimateSeqRef.current) return null;
 

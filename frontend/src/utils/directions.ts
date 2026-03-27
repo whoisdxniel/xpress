@@ -1,14 +1,18 @@
 export type Coords = { lat: number; lng: number };
 
-const DEFAULT_ROUTE_TIMEOUT_MS = 3200;
+type DrivingRoute = { distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] };
+
+const DEFAULT_MAPBOX_TIMEOUT_MS = 8000;
+const DEFAULT_OSRM_TIMEOUT_MS = 10000;
 const CACHE_TTL_MS = 60_000;
 const FAILURE_CACHE_TTL_MS = 8_000;
 const CACHE_MAX = 250;
 const BUILTIN_OSRM_BASE_URLS = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
+const MAPBOX_DIRECTIONS_BASE_URL = "https://api.mapbox.com/directions/v5/mapbox/driving";
 
 type CacheEntry<T> = { ts: number; value: T; ttlMs: number };
 
-const routeCache = new Map<string, CacheEntry<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null>>();
+const routeCache = new Map<string, CacheEntry<DrivingRoute | null>>();
 const distCache = new Map<string, CacheEntry<number | null>>();
 const nearestCache = new Map<string, CacheEntry<Coords | null>>();
 
@@ -71,6 +75,70 @@ function withOriginalEndpoints(path: { latitude: number; longitude: number }[], 
   }
 
   return nextPath;
+}
+
+function mapboxAccessToken(): string | null {
+  const raw = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_ACCESS_TOKEN;
+  const token = typeof raw === "string" ? raw.trim() : "";
+  return token || null;
+}
+
+function parseRoutePath(coords: unknown): { latitude: number; longitude: number }[] | null {
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+
+  const path = coords
+    .map((pair) => {
+      const lng = Array.isArray(pair) ? pair[0] : null;
+      const lat = Array.isArray(pair) ? pair[1] : null;
+      if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+      if (typeof lng !== "number" || !Number.isFinite(lng)) return null;
+      return { latitude: lat, longitude: lng };
+    })
+    .filter(Boolean) as { latitude: number; longitude: number }[];
+
+  return path.length >= 2 ? path : null;
+}
+
+function parseWaypointLocation(value: unknown): Coords | null {
+  const lng = Array.isArray(value) ? value[0] : null;
+  const lat = Array.isArray(value) ? value[1] : null;
+  if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+  if (typeof lng !== "number" || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function parseWaypointDistance(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+async function fetchMapboxDrivingRouteForPair(params: { from: Coords; to: Coords }): Promise<DrivingRoute | null> {
+  const token = mapboxAccessToken();
+  if (!token) return null;
+
+  const coordinates = `${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}`;
+  const url = `${MAPBOX_DIRECTIONS_BASE_URL}/${coordinates}?alternatives=false&steps=false&geometries=geojson&overview=full&radiuses=unlimited;unlimited&access_token=${encodeURIComponent(token)}`;
+
+  const data: any = await fetchJsonWithTimeout(url, DEFAULT_MAPBOX_TIMEOUT_MS);
+  const route = data?.routes?.[0];
+  const dist = route?.distance;
+  const dur = route?.duration;
+  const path = parseRoutePath(route?.geometry?.coordinates);
+
+  if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
+  if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) return null;
+  if (!path) return null;
+
+  const snappedFrom = parseWaypointLocation(data?.waypoints?.[0]?.location);
+  const snappedTo = parseWaypointLocation(data?.waypoints?.[1]?.location);
+  const connectorMeters =
+    (snappedFrom ? parseWaypointDistance(data?.waypoints?.[0]?.distance) || haversineMeters(params.from, snappedFrom) : 0) +
+    (snappedTo ? parseWaypointDistance(data?.waypoints?.[1]?.distance) || haversineMeters(params.to, snappedTo) : 0);
+
+  return {
+    distanceMeters: Math.round(dist) + connectorMeters,
+    durationSeconds: Math.round(dur),
+    path: withOriginalEndpoints(path, params.from, params.to),
+  };
 }
 
 async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<any | null> {
@@ -139,7 +207,7 @@ async function snapCoordToRoad(coord: Coords): Promise<Coords | null> {
   const urls = osrmBaseUrls().map((base) => `${base}/nearest/v1/driving/${coord.lng},${coord.lat}?number=1`);
 
   try {
-    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
+    const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_OSRM_TIMEOUT_MS);
     const location = data?.waypoints?.[0]?.location;
     const lng = location?.[0];
     const lat = location?.[1];
@@ -158,31 +226,20 @@ async function snapCoordToRoad(coord: Coords): Promise<Coords | null> {
   }
 }
 
-async function fetchDrivingRouteForPair(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null> {
+async function fetchDrivingRouteForPair(params: { from: Coords; to: Coords }): Promise<DrivingRoute | null> {
   const urls = osrmBaseUrls().map(
     (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=simplified&geometries=geojson&alternatives=false&steps=false`
   );
 
-  const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
+  const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_OSRM_TIMEOUT_MS);
   const route = data?.routes?.[0];
   const dist = route?.distance;
   const dur = route?.duration;
-  const coords: any[] | undefined = route?.geometry?.coordinates;
+  const path = parseRoutePath(route?.geometry?.coordinates);
 
   if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
   if (typeof dur !== "number" || !Number.isFinite(dur) || dur < 0) return null;
-  if (!Array.isArray(coords) || coords.length < 2) return null;
-
-  const path = coords
-    .map((pair) => {
-      const lng = pair?.[0];
-      const lat = pair?.[1];
-      if (typeof lat !== "number" || typeof lng !== "number") return null;
-      return { latitude: lat, longitude: lng };
-    })
-    .filter(Boolean) as { latitude: number; longitude: number }[];
-
-  if (path.length < 2) return null;
+  if (!path) return null;
 
   return {
     distanceMeters: Math.round(dist),
@@ -196,21 +253,32 @@ async function fetchDrivingRouteDistanceForPair(params: { from: Coords; to: Coor
     (base) => `${base}/route/v1/driving/${params.from.lng},${params.from.lat};${params.to.lng},${params.to.lat}?overview=false&alternatives=false&steps=false`
   );
 
-  const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_ROUTE_TIMEOUT_MS);
+  const data: any = await fetchFirstJsonAgainstUrls(urls, DEFAULT_OSRM_TIMEOUT_MS);
   const dist = data?.routes?.[0]?.distance;
   if (typeof dist !== "number" || !Number.isFinite(dist) || dist <= 0) return null;
   return Math.round(dist);
 }
 
-export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<{ distanceMeters: number; durationSeconds: number; path: { latitude: number; longitude: number }[] } | null> {
+export async function getDrivingRoute(params: { from: Coords; to: Coords }): Promise<DrivingRoute | null> {
   const cacheKey = keyFromPair(params.from, params.to);
   const cached = cacheGet(routeCache, cacheKey);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    if (cached) cacheSet(distCache, cacheKey, cached.distanceMeters);
+    return cached;
+  }
 
   try {
+    const mapboxRoute = await fetchMapboxDrivingRouteForPair(params);
+    if (mapboxRoute) {
+      cacheSet(routeCache, cacheKey, mapboxRoute);
+      cacheSet(distCache, cacheKey, mapboxRoute.distanceMeters);
+      return mapboxRoute;
+    }
+
     const directRoute = await fetchDrivingRouteForPair(params);
     if (directRoute) {
       cacheSet(routeCache, cacheKey, directRoute);
+      cacheSet(distCache, cacheKey, directRoute.distanceMeters);
       return directRoute;
     }
 
@@ -233,6 +301,7 @@ export async function getDrivingRoute(params: { from: Coords; to: Coords }): Pro
       path: withOriginalEndpoints(snappedRoute.path, params.from, params.to),
     };
     cacheSet(routeCache, cacheKey, value);
+    cacheSet(distCache, cacheKey, value.distanceMeters);
     return value;
   } catch {
     cacheSet(routeCache, cacheKey, null, FAILURE_CACHE_TTL_MS);
@@ -245,7 +314,20 @@ export async function getDrivingRouteDistanceMeters(params: { from: Coords; to: 
   const cached = cacheGet(distCache, cacheKey);
   if (cached !== undefined) return cached;
 
+  const cachedRoute = cacheGet(routeCache, cacheKey);
+  if (cachedRoute) {
+    cacheSet(distCache, cacheKey, cachedRoute.distanceMeters);
+    return cachedRoute.distanceMeters;
+  }
+
   try {
+    const mapboxRoute = await fetchMapboxDrivingRouteForPair(params);
+    if (mapboxRoute) {
+      cacheSet(routeCache, cacheKey, mapboxRoute);
+      cacheSet(distCache, cacheKey, mapboxRoute.distanceMeters);
+      return mapboxRoute.distanceMeters;
+    }
+
     const directDistance = await fetchDrivingRouteDistanceForPair(params);
     if (directDistance) {
       cacheSet(distCache, cacheKey, directDistance);

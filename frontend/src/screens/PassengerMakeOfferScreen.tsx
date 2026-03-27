@@ -277,6 +277,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     if (routeDataKey === currentRouteKey && routePath?.length && distanceMeters != null && distanceMeters > 0) {
       return { routePath, distanceMeters, durationSeconds };
     }
+    const showError = opts?.showError ?? true;
 
     setRouteLoading(true);
     try {
@@ -290,6 +291,10 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       setRouteDataKey(nextPath && nextDistance != null ? currentRouteKey : null);
       setDistanceMeters(nextDistance);
       setDurationSeconds(nextDuration);
+
+      if ((!nextPath || nextDistance == null || nextDistance <= 0) && showError) {
+        setError("No se pudo trazar la ruta en este momento. Reintentá.");
+      }
 
       return nextPath && nextDistance != null
         ? { routePath: nextPath, distanceMeters: nextDistance, durationSeconds: nextDuration }
@@ -313,9 +318,10 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
     try {
       const mySeq = ++estimateSeqRef.current;
-      const currentDistance = routeDataKey === currentRouteKey ? distanceMeters : null;
-      const currentDuration = routeDataKey === currentRouteKey ? durationSeconds : null;
-      const currentPath = routeDataKey === currentRouteKey ? routePath : null;
+      const ensuredRoute = await ensureRouteData({ showError: false });
+      const currentDistance = ensuredRoute?.distanceMeters ?? (routeDataKey === currentRouteKey ? distanceMeters : null);
+      const currentDuration = ensuredRoute?.durationSeconds ?? (routeDataKey === currentRouteKey ? durationSeconds : null);
+      const currentPath = ensuredRoute?.routePath ?? (routeDataKey === currentRouteKey ? routePath : null);
 
       const res = await apiEstimateOffer(token, {
         serviceTypeWanted,

@@ -593,7 +593,12 @@ export async function commitOffer(params: { userId: string; offerId: string; coo
     },
   });
   void emitNearbyOfferChange(offer, "OFFER_UNAVAILABLE");
-  emitToUser(offer.passenger.userId, "ride:changed", { rideId: created.ride.id, type: "OFFER_COMMITTED" });
+  emitToUser(offer.passenger.userId, "ride:changed", {
+    rideId: created.ride.id,
+    offerId: offer.id,
+    type: "OFFER_COMMITTED",
+    eventId: `OFFER_COMMITTED:${offer.id}:${driver.id}`,
+  });
   emitToUser(driver.userId, "ride:changed", { rideId: created.ride.id, type: "OFFER_COMMITTED" });
 
   void sendPushToAdmins({

@@ -816,7 +816,12 @@ export async function offerRideForDriver(params: { userId: string; rideId: strin
       });
 
   emitToUser(ride.passenger.userId, "ride:offers:changed", { rideId: ride.id });
-  emitToUser(ride.passenger.userId, "ride:changed", { rideId: ride.id, type: "RIDE_OFFERED" });
+  emitToUser(ride.passenger.userId, "ride:changed", {
+    rideId: ride.id,
+    driverId: driver.id,
+    type: "RIDE_OFFERED",
+    eventId: `RIDE_OFFERED:${ride.id}:${driver.id}`,
+  });
 
   // Push al cliente por cada ejecutivo que se ofrece.
   void sendPushToUser({

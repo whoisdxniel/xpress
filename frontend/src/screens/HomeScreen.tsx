@@ -45,6 +45,7 @@ import {
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { notifyCatchup } from "../notifications/catchup";
 import { notifyAndPlayInAppOnce, playInAppSoundOnce } from "../notifications/incoming";
+import { handleDriverNearbyForegroundRealtime, handleRideChangedForegroundRealtime } from "../notifications/foregroundRealtime";
 import { buildTelUrl, openDialer } from "../utils/phone";
 import { getMatchingRadiusM } from "../config/matchingRadius";
 import { subscribeRealtimeEvent } from "../realtime/socket";
@@ -328,11 +329,13 @@ export function HomeScreen({ navigation }: Props) {
           // hacemos catch-up con el mismo sonido del caso 2.
           const offerIdRaw = (res.ride as any)?.offer?.id;
           const offerId = offerIdRaw != null ? String(offerIdRaw) : "";
+          const committedDriverIdRaw = (res.ride as any)?.matchedDriverId ?? (res.ride as any)?.matchedDriver?.id;
+          const committedDriverId = committedDriverIdRaw != null ? String(committedDriverIdRaw) : "";
           if (rideId && offerId && status === "ACCEPTED" && matched) {
             const lastCommittedRideId = await getActiveRideOfferCommittedRideId();
             if (lastCommittedRideId !== rideId) {
               await notifyAndPlayInAppOnce({
-                eventId: `OFFER_COMMITTED:${offerId}:${rideId}`,
+                eventId: `OFFER_COMMITTED:${offerId}:${committedDriverId || rideId}`,
                 soundName: "aceptar_servicio",
                 title: "Contraoferta aceptada",
                 body: "Un chofer se comprometió con tu oferta.",
@@ -670,16 +673,27 @@ export function HomeScreen({ navigation }: Props) {
   const handleRealtimeNearbyChange = (payload: any) => {
     if (!isFocused) return;
     if (role !== "DRIVER") return;
+    void handleDriverNearbyForegroundRealtime(payload);
     void refreshNearbyRequests({ showLoading: false });
   };
 
   const handleRealtimeRideChange = (payload: any) => {
     if (!isFocused) return;
 
-    const rideIdFromPayload = payload?.rideId != null ? String(payload.rideId) : "";
+    const payloadType = payload?.type != null ? String(payload.type) : "";
+    const payloadRideId = payload?.rideId != null ? String(payload.rideId) : "";
+
+    if (role === "DRIVER" || role === "USER") {
+      void handleRideChangedForegroundRealtime({ role, payload });
+    }
+
+    if (role === "DRIVER" && payloadRideId && (payloadType === "RIDE_ASSIGNED" || payloadType === "RIDE_MATCHED")) {
+      driverPendingRideNotifiedRef.current = payloadRideId;
+    }
+
     void refreshRide({ showLoading: false });
 
-    if (role === "USER" && offersRideId && (!rideIdFromPayload || rideIdFromPayload === offersRideId)) {
+    if (role === "USER" && offersRideId && (!payloadRideId || payloadRideId === offersRideId)) {
       void refreshOffersMeta({ showLoading: false });
     }
 

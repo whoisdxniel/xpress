@@ -1,8 +1,10 @@
 import { PushPlatform } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { sendAPNsMulticast } from "../../integrations/apns";
 import { getFCMOrNull } from "../../integrations/fcm";
 
 let warnedFcmNotConfigured = false;
+let warnedApnsNotConfigured = false;
 
 function makeEventId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -37,15 +39,23 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizePushToken(token: string, platform: "ANDROID" | "IOS") {
+  const trimmed = token.trim();
+  if (platform !== "IOS") return trimmed;
+  return trimmed.replace(/[<>\s]/g, "");
+}
+
 export async function registerPushToken(params: {
   userId: string;
   token: string;
   platform: "ANDROID" | "IOS";
 }) {
+  const normalizedToken = normalizePushToken(params.token, params.platform);
+
   return prisma.pushToken.upsert({
-    where: { token: params.token },
+    where: { token: normalizedToken },
     update: { userId: params.userId, platform: params.platform as PushPlatform },
-    create: { userId: params.userId, token: params.token, platform: params.platform as PushPlatform },
+    create: { userId: params.userId, token: normalizedToken, platform: params.platform as PushPlatform },
   });
 }
 
@@ -56,15 +66,6 @@ export async function sendPushToUser(params: {
   data?: Record<string, string>;
   soundName?: string;
 }) {
-  const messaging = getFCMOrNull();
-  if (!messaging) {
-    if (!warnedFcmNotConfigured) {
-      warnedFcmNotConfigured = true;
-      console.warn("[push] FCM no configurado. Revisar FCM_SERVICE_ACCOUNT_JSON/FCM_SERVICE_ACCOUNT_PATH");
-    }
-    return { ok: false as const, reason: "FCM_NOT_CONFIGURED" };
-  }
-
   const tokens = await prisma.pushToken.findMany({ where: { userId: params.userId } });
   if (tokens.length === 0) return { ok: true as const, sent: 0, failed: 0 };
 
@@ -83,8 +84,14 @@ export async function sendPushToUser(params: {
     ...(soundName ? { soundName } : null),
   };
 
-  const androidTokens = tokens.filter((t) => t.platform === "ANDROID").map((t) => t.token);
-  const iosTokens = tokens.filter((t) => t.platform === "IOS").map((t) => t.token);
+  const androidTokens = tokens
+    .filter((t) => t.platform === "ANDROID")
+    .map((t) => normalizePushToken(t.token, "ANDROID"))
+    .filter(Boolean);
+  const iosTokens = tokens
+    .filter((t) => t.platform === "IOS")
+    .map((t) => normalizePushToken(t.token, "IOS"))
+    .filter(Boolean);
 
   let sent = 0;
   let failed = 0;
@@ -93,6 +100,14 @@ export async function sendPushToUser(params: {
   // - Foreground: Expo Notifications handler evita sonido del sistema y la app reproduce el MP3.
   // - Background: Android muestra la notificación y reproduce el MP3 vía canal nativo.
   if (androidTokens.length > 0) {
+    const messaging = getFCMOrNull();
+    if (!messaging) {
+      if (!warnedFcmNotConfigured) {
+        warnedFcmNotConfigured = true;
+        console.warn("[push] FCM no configurado. Revisar FCM_SERVICE_ACCOUNT_JSON/FCM_SERVICE_ACCOUNT_PATH");
+      }
+      failed += androidTokens.length;
+    } else {
     const androidData: Record<string, string> = { ...baseData };
 
     const channelId = androidChannelIdForSound(soundName);
@@ -111,31 +126,32 @@ export async function sendPushToUser(params: {
 
     sent += resAndroid.successCount;
     failed += resAndroid.failureCount;
+    }
   }
 
-  // IOS: mantenemos notificación/APNs estándar.
+  // IOS: enviamos directo a APNs usando el token nativo que expone expo-notifications.
   if (iosTokens.length > 0) {
-    const resIos = await messaging.sendEachForMulticast({
+    const resIos = await sendAPNsMulticast({
       tokens: iosTokens,
-      notification: { title: params.title, body: params.body },
+      title: params.title,
+      body: params.body,
       data: baseData,
-      apns: {
-        headers: {
-          "apns-priority": "10",
-        },
-        payload: soundName
-          ? {
-              aps: {
-                // iOS requiere el nombre del archivo en el bundle (con extensión)
-                sound: `${soundName}.mp3`,
-              },
-            }
-          : undefined,
-      },
+      soundName,
     });
+
+    if (!resIos.configured && !warnedApnsNotConfigured) {
+      warnedApnsNotConfigured = true;
+      console.warn(
+        "[push] APNs no configurado. Revisar APNS_AUTH_KEY_P8/APNS_AUTH_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID y APNS_BUNDLE_ID"
+      );
+    }
 
     sent += resIos.successCount;
     failed += resIos.failureCount;
+  }
+
+  if (sent === 0 && failed > 0) {
+    return { ok: false as const, reason: "PUSH_NOT_CONFIGURED", sent, failed };
   }
 
   return { ok: true as const, sent, failed };

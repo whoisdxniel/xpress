@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.xpress.traslados",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Xpress usa tu ubicacion para mostrar el mapa, calcular rutas y actualizar tus viajes en tiempo real."
+      }
     },
     "android": {
       "package": "com.xpress.traslados",
@@ -34,6 +38,7 @@
       [
         "expo-notifications",
         {
+          "enableBackgroundRemoteNotifications": false,
           "sounds": [
             "./assets/notifications/tienes_servicio.mp3",
             "./assets/notifications/aceptar_servicio.mp3",
@@ -42,6 +47,15 @@
           ]
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Xpress usa tu ubicacion para mostrar el mapa, calcular rutas y actualizar tus viajes en tiempo real.",
+          "locationAlwaysAndWhenInUsePermission": "Xpress usa tu ubicacion en segundo plano para que tus pasajeros y la operadora vean tu ubicacion en tiempo real durante el servicio.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      "@rnmapbox/maps",
       "expo-font"
     ],
     "extra": {}

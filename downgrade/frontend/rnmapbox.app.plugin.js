@@ -1,0 +1,1 @@
+module.exports = require("./node_modules/@rnmapbox/maps/app.plugin.js");

@@ -41,6 +41,29 @@ const rnMapboxNativeUserLocationPath = path.join(
   "RNMBXNativeUserLocation.swift"
 );
 
+const rnMapboxLayerPath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "@rnmapbox",
+  "maps",
+  "ios",
+  "RNMBX",
+  "RNMBXLayer.swift"
+);
+
+const rnMapboxChangeLineOffsetsAnimatorPath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "@rnmapbox",
+  "maps",
+  "ios",
+  "RNMBX",
+  "ShapeAnimators",
+  "RNMBXChangeLineOffsetsShapeAnimatorModule.swift"
+);
+
 const expoDynamicTypePath = path.join(
   __dirname,
   "..",
@@ -316,6 +339,34 @@ const rnMapboxPuckBearingSetterNew = [
   "      #endif",
   "    }",
 ].join("\n");
+const rnMapboxSetBaseOptionsOld = "  func setBaseOptions<T: Layer>(_ layer: inout T) {";
+const rnMapboxSetBaseOptionsNew = "  func setBaseOptions(_ layer: inout Layer) {";
+const rnMapboxBuildLineStringOld = [
+  "private func buildLineString(_coordinates: NSArray) -> LineString {",
+  "  let coordinates = _coordinates.map { coord in",
+  "    let coord = coord as! [NSNumber]",
+  "    return LocationCoordinate2D(latitude: coord[1].doubleValue, longitude: coord[0].doubleValue)",
+  "  }",
+  "  ",
+  "  return .init(coordinates)",
+  "}",
+].join("\n");
+const rnMapboxBuildLineStringNew = [
+  "private func buildLineString(_coordinates: NSArray) -> LineString {",
+  "  let coordinates: [LocationCoordinate2D] = _coordinates.compactMap { coord -> LocationCoordinate2D? in",
+  "    guard let coordinatePair = coord as? [NSNumber], coordinatePair.count >= 2 else {",
+  "      return nil",
+  "    }",
+  "",
+  "    return LocationCoordinate2D(",
+  "      latitude: coordinatePair[1].doubleValue,",
+  "      longitude: coordinatePair[0].doubleValue",
+  "    )",
+  "  }",
+  "",
+  "  return .init(coordinates)",
+  "}",
+].join("\n");
 
 if (!fs.existsSync(boostPodspecPath)) {
   console.log("[postinstall] boost.podspec no existe; se omite ese parche iOS.");
@@ -353,11 +404,21 @@ if (!fs.existsSync(rnMapboxPodspecPath)) {
   }
 }
 
-if (!fs.existsSync(rnMapboxMapViewPath) || !fs.existsSync(rnMapboxNativeUserLocationPath)) {
+if (
+  !fs.existsSync(rnMapboxMapViewPath) ||
+  !fs.existsSync(rnMapboxNativeUserLocationPath) ||
+  !fs.existsSync(rnMapboxLayerPath) ||
+  !fs.existsSync(rnMapboxChangeLineOffsetsAnimatorPath)
+) {
   console.log("[postinstall] RNMapbox iOS sources no existen; se omite ese parche Swift.");
 } else {
   const currentRnMapboxMapView = fs.readFileSync(rnMapboxMapViewPath, "utf8");
   const currentRnMapboxNativeUserLocation = fs.readFileSync(rnMapboxNativeUserLocationPath, "utf8");
+  const currentRnMapboxLayer = fs.readFileSync(rnMapboxLayerPath, "utf8");
+  const currentRnMapboxChangeLineOffsetsAnimator = fs.readFileSync(
+    rnMapboxChangeLineOffsetsAnimatorPath,
+    "utf8"
+  );
 
   const rnMapboxMapViewNeedsPatch =
     currentRnMapboxMapView.includes(rnMapboxLayerHelperOld) ||
@@ -366,8 +427,19 @@ if (!fs.existsSync(rnMapboxMapViewPath) || !fs.existsSync(rnMapboxNativeUserLoca
     currentRnMapboxNativeUserLocation.includes(rnMapboxPuckBearingTypeOld) ||
     currentRnMapboxNativeUserLocation.includes(rnMapboxPuckBearingSetterOld) ||
     !currentRnMapboxNativeUserLocation.includes("typealias RNMBXPuckBearing = PuckBearingSource");
+  const rnMapboxLayerNeedsPatch = currentRnMapboxLayer.includes(rnMapboxSetBaseOptionsOld);
+  const rnMapboxChangeLineOffsetsAnimatorNeedsPatch =
+    currentRnMapboxChangeLineOffsetsAnimator.includes(rnMapboxBuildLineStringOld) ||
+    !currentRnMapboxChangeLineOffsetsAnimator.includes(
+      "let coordinates: [LocationCoordinate2D] = _coordinates.compactMap"
+    );
 
-  if (!rnMapboxMapViewNeedsPatch && !rnMapboxNativeUserLocationNeedsPatch) {
+  if (
+    !rnMapboxMapViewNeedsPatch &&
+    !rnMapboxNativeUserLocationNeedsPatch &&
+    !rnMapboxLayerNeedsPatch &&
+    !rnMapboxChangeLineOffsetsAnimatorNeedsPatch
+  ) {
     console.log("[postinstall] RNMapbox iOS ya es compatible con Swift 5.5 y Mapbox 10 para Xcode 13.");
   } else {
     const patchedRnMapboxMapView = currentRnMapboxMapView
@@ -376,9 +448,23 @@ if (!fs.existsSync(rnMapboxMapViewPath) || !fs.existsSync(rnMapboxNativeUserLoca
     const patchedRnMapboxNativeUserLocation = currentRnMapboxNativeUserLocation
       .replace(rnMapboxPuckBearingTypeOld, rnMapboxPuckBearingTypeNew)
       .replace(rnMapboxPuckBearingSetterOld, rnMapboxPuckBearingSetterNew);
+    const patchedRnMapboxLayer = currentRnMapboxLayer.replace(
+      rnMapboxSetBaseOptionsOld,
+      rnMapboxSetBaseOptionsNew
+    );
+    const patchedRnMapboxChangeLineOffsetsAnimator = currentRnMapboxChangeLineOffsetsAnimator.replace(
+      rnMapboxBuildLineStringOld,
+      rnMapboxBuildLineStringNew
+    );
 
     fs.writeFileSync(rnMapboxMapViewPath, patchedRnMapboxMapView, "utf8");
     fs.writeFileSync(rnMapboxNativeUserLocationPath, patchedRnMapboxNativeUserLocation, "utf8");
+    fs.writeFileSync(rnMapboxLayerPath, patchedRnMapboxLayer, "utf8");
+    fs.writeFileSync(
+      rnMapboxChangeLineOffsetsAnimatorPath,
+      patchedRnMapboxChangeLineOffsetsAnimator,
+      "utf8"
+    );
     console.log("[postinstall] RNMapbox iOS ajustado para Swift 5.5 y Mapbox 10 en Xcode 13.");
   }
 }

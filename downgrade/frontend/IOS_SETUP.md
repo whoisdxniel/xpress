@@ -108,6 +108,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 2. Abrir terminal dentro de `downgrade/frontend/`.
 3. Ejecutar `npm install`.
   - esta copia aplica en `postinstall` un parche automatico al `boost.podspec` de React Native para evitar el checksum roto del mirror viejo de JFrog durante `pod install`.
+  - esta copia ya trae `index.js` versionado, asi que Expo no deberia volver a reescribir `package.json` en cada `prebuild`.
 4. Exportar `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` y `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`.
 5. Antes de ejecutar `expo prebuild`, exportar `RUBYOPT=-rlogger` en esa misma terminal para que Expo pueda detectar correctamente `pod` y no intente reinstalar CocoaPods por gem o Homebrew.
 6. Ejecutar `npx expo prebuild --clean --platform ios`.
@@ -121,6 +122,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - El archivo `rnmapbox.app.plugin.js` es intencional en esta copia. Se dejo asi para que Expo 48 resuelva bien el plugin de `@rnmapbox/maps`.
 - En esta copia, `rnmapbox.app.plugin.js` fija Mapbox nativo en `10.13.1` para iOS porque `11.16.x` ya exige Xcode 16.2 y no entra en la Mac vieja con Xcode 13.2.1.
 - Esta copia tambien parchea en `postinstall` el `boost.podspec` de React Native para cambiar el download de `boost` al mirror oficial `archives.boost.io`, porque el mirror viejo de JFrog esta devolviendo un archivo con checksum incorrecto.
+- Esta copia tambien versiona `index.js` y usa `main: index.js` para evitar que `expo prebuild` ensucie `package.json` en cada corrida.
 - Esta copia ya no depende de `gap` incompatible con RN 0.70 porque se subio a RN 0.71 dentro del mismo downgrade.
 - En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
 - Sin APNs no hay equivalencia con Android cuando la app esta cerrada; el objetivo actual sigue siendo foreground realtime estable.

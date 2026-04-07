@@ -97,6 +97,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
   - build nativo iOS: `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`
   - si ya usas `MAPBOX_DOWNLOADS_TOKEN`, `app.config.js` lo reutiliza
   - `app.config.js` tambien copia el token runtime y otros `EXPO_PUBLIC_*` relevantes a `expo.extra`, para que el dev client y el archive no dependan solo de `process.env`
+  - `app.config.js` tambien carga `.env`/`.env.local` directamente y escribe el token runtime en `Info.plist` (`MBXAccessToken` / `MGLMapboxAccessToken`) para que Mapbox iOS lo tenga disponible antes de que arranque el JS
 
 ### Backend
 

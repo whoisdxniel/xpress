@@ -7,6 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "postinstall": "node scripts/patch-react-native-ios-podspecs.js",
     "android:setup-sdk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\setup-android-sdk.ps1",
     "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-debug.ps1",
     "android:apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-release.ps1",

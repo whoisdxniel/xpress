@@ -13,6 +13,8 @@ const OPEN_RASTER_STYLE_JSON = JSON.stringify({
       type: "raster",
       tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
       tileSize: 256,
+      minzoom: 0,
+      maxzoom: 19,
       attribution: "© OpenStreetMap contributors",
     },
   },
@@ -22,7 +24,7 @@ const OPEN_RASTER_STYLE_JSON = JSON.stringify({
       type: "raster",
       source: "osm",
       minzoom: 0,
-      maxzoom: 22,
+      maxzoom: 19,
     },
   ],
 });

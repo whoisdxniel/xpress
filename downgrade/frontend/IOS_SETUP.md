@@ -137,6 +137,8 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - Si bajas cambios que toquen `rnmapbox.app.plugin.js` o el `postinstall` iOS, no alcanza con repetir `pod install` sobre una carpeta `ios/` vieja: vuelve a correr `npx expo prebuild --clean --platform ios` para regenerar Podfile, flags y settings nativos antes de abrir Xcode.
 - Esta copia carga un polyfill local de `URLSearchParams` desde el entrypoint para cubrir el runtime JS viejo de Expo 48 / RN 0.71 en iOS y evitar fallos como `URLSearchParams.set is not implemented`.
 - Si el token runtime de Mapbox responde `401/403`, el wrapper `AppMap` cae automaticamente a un estilo raster abierto para que el simulador y las pantallas sigan funcionando mientras corriges el token publico; el routing ya intenta Mapbox primero y luego OSRM.
+- En esta copia, `runtime.ts` tambien consulta los `EXPO_PUBLIC_*` con acceso estatico para que Expo 48 los incruste en el bundle JS; con acceso dinamico tipo `process.env[key]` Expo no siempre los expone en bare iOS.
+- El fallback raster abierto ahora limita el zoom efectivo a `19` y agrega `User-Agent` solo para `tile.openstreetmap.org`, para evitar errores `400` al acercar demasiado en simulator.
 - Esta copia ya no depende de `gap` incompatible con RN 0.70 porque se subio a RN 0.71 dentro del mismo downgrade.
 - En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
 - Sin APNs no hay equivalencia con Android cuando la app esta cerrada; el objetivo actual sigue siendo foreground realtime estable.

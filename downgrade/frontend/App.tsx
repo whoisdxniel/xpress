@@ -15,6 +15,7 @@ const handledMapboxFragments = [
   "HTTP status code 401",
   "HTTP status code 403",
 ];
+const fallbackTileHeaderOptions = { urlRegexp: "^https://tile\\.openstreetmap\\.org/.*" };
 
 const mapboxLogger = (MapboxGL as any)?.Logger;
 if (typeof mapboxLogger?.setLogCallback === "function") {
@@ -32,6 +33,10 @@ if (typeof mapboxLogger?.setLogCallback === "function") {
 }
 
 const mapboxToken = getMapboxAccessToken();
+
+if (typeof (MapboxGL as any)?.addCustomHeader === "function") {
+  (MapboxGL as any).addCustomHeader("User-Agent", "Xpress/1.0 (com.xpress.traslados)", fallbackTileHeaderOptions);
+}
 
 if (mapboxToken) {
   MapboxGL.setAccessToken(mapboxToken);

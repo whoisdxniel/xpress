@@ -3,6 +3,15 @@ import { NativeModules } from "react-native";
 
 type RuntimeRecord = Record<string, unknown>;
 
+const INLINE_PUBLIC_ENV: Record<string, string | null> = {
+  EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: normalizeString(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN),
+  EXPO_PUBLIC_API_BASE_URL: normalizeString(process.env.EXPO_PUBLIC_API_BASE_URL),
+  EXPO_PUBLIC_IOS_PUSH_ENABLED: normalizeString(process.env.EXPO_PUBLIC_IOS_PUSH_ENABLED),
+  EXPO_PUBLIC_METER_INCLUDED_KM: normalizeString(process.env.EXPO_PUBLIC_METER_INCLUDED_KM),
+  EXPO_PUBLIC_OPERATOR_PHONE: normalizeString(process.env.EXPO_PUBLIC_OPERATOR_PHONE),
+  EXPO_PUBLIC_OSRM_BASE_URL: normalizeString(process.env.EXPO_PUBLIC_OSRM_BASE_URL),
+};
+
 function asRecord(value: unknown): RuntimeRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as RuntimeRecord;
@@ -38,6 +47,10 @@ function getProcessEnvValue(key: string): string | null {
   return normalizeString(maybeProcess?.env?.[key]);
 }
 
+function getInlinePublicEnvValue(key: string): string | null {
+  return INLINE_PUBLIC_ENV[key] ?? null;
+}
+
 function getNativeModuleValue(keys: string[]): string | null {
   const nativeMapboxModule = (NativeModules as any)?.RNMBXModule;
   if (!nativeMapboxModule) return null;
@@ -52,6 +65,11 @@ function getNativeModuleValue(keys: string[]): string | null {
 
 function getRuntimeString(envKeys: string[], extraKeys: string[]): string | null {
   const extra = getExpoExtra();
+
+  for (const key of envKeys) {
+    const inlineValue = getInlinePublicEnvValue(key);
+    if (inlineValue) return inlineValue;
+  }
 
   for (const key of envKeys) {
     const value = getProcessEnvValue(key);

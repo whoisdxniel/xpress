@@ -45,6 +45,8 @@ export type AppMapRef = {
   animateToRegion: (region: Region, durationMs?: number) => void;
 };
 
+const FALLBACK_MAX_ZOOM = 19;
+
 type Props = {
   style?: any;
   initialRegion: Region;
@@ -100,6 +102,8 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const [styleMode, setStyleMode] = useState<MapStyleMode>(() => getCachedMapStyleMode());
 
   const interactive = props.interactive ?? true;
+  const useFallbackStyle = styleMode === "fallback";
+  const maxZoomLevel = useFallbackStyle ? FALLBACK_MAX_ZOOM : 22;
 
   useEffect(() => {
     let alive = true;
@@ -117,9 +121,9 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const defaultSettings = useMemo(() => {
     return {
       centerCoordinate: [props.initialRegion.longitude, props.initialRegion.latitude] as [number, number],
-      zoomLevel: zoomFromRegion(props.initialRegion),
+      zoomLevel: clamp(zoomFromRegion(props.initialRegion), 0, maxZoomLevel),
     };
-  }, [props.initialRegion.latitude, props.initialRegion.longitude, props.initialRegion.latitudeDelta, props.initialRegion.longitudeDelta]);
+  }, [maxZoomLevel, props.initialRegion.latitude, props.initialRegion.longitude, props.initialRegion.latitudeDelta, props.initialRegion.longitudeDelta]);
 
   const fitToCoordinates = useCallback<AppMapRef["fitToCoordinates"]>((coords, opts) => {
     const points = (coords || [])
@@ -157,7 +161,7 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const animateToRegion = useCallback<AppMapRef["animateToRegion"]>((region, durationMs) => {
     if (!region || !isFiniteNumber(region.latitude) || !isFiniteNumber(region.longitude)) return;
 
-    const zoomLevel = zoomFromRegion(region);
+    const zoomLevel = clamp(zoomFromRegion(region), 0, maxZoomLevel);
     cameraRef.current?.setCamera({
       type: "CameraStop",
       centerCoordinate: [region.longitude, region.latitude],
@@ -165,7 +169,7 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       animationDuration: typeof durationMs === "number" ? durationMs : 450,
       animationMode: "easeTo",
     } as any);
-  }, []);
+  }, [maxZoomLevel]);
 
   useImperativeHandle(ref, () => ({ fitToCoordinates, animateToRegion }), [fitToCoordinates, animateToRegion]);
 
@@ -219,8 +223,6 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       });
   }, [props.markers]);
 
-  const useFallbackStyle = styleMode === "fallback";
-
   return (
     <MapboxGL.MapView
       style={[StyleSheet.absoluteFill, props.style]}
@@ -247,7 +249,7 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
         props.onUserGesture?.();
       }}
     >
-      <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} />
+      <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} maxZoomLevel={maxZoomLevel} />
 
       {(props.polygons || [])
         .filter((p) => p && p.id && p.geojson)

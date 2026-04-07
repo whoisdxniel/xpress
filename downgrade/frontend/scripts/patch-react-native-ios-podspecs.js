@@ -378,6 +378,23 @@ const rnMapboxBuildLineStringNew = [
   "  return .init(coordinates)",
   "}",
 ].join("\n");
+const rnMapboxMapViewAccessTokenOld = [
+  "      let accessToken = RNMBXModule.accessToken",
+  "      if accessToken == nil {",
+  "        Logger.log(level: .error, message: \"No accessToken set, please call Mapbox.setAccessToken(...)\")",
+  "      }",
+  "      let resourceOptions = ResourceOptions(accessToken: accessToken ?? \"\")",
+].join("\n");
+const rnMapboxMapViewAccessTokenNew = [
+  "      let accessToken = RNMBXModule.accessToken ?? RNMBXModule.defaultAccessToken()",
+  "      if RNMBXModule.accessToken == nil, let token = accessToken {",
+  "        RNMBXModule.accessToken = token",
+  "      }",
+  "      if accessToken == nil {",
+  "        Logger.log(level: .error, message: \"No accessToken set, please call Mapbox.setAccessToken(...)\")",
+  "      }",
+  "      let resourceOptions = ResourceOptions(accessToken: accessToken ?? \"\")",
+].join("\n");
 const rnMapboxDefaultAccessTokenOld = [
   "class RNMBXModule : NSObject {",
   "  ",
@@ -474,7 +491,8 @@ if (
 
   const rnMapboxMapViewNeedsPatch =
     currentRnMapboxMapView.includes(rnMapboxLayerHelperOld) ||
-    currentRnMapboxMapView.includes(rnMapboxSetSourceVisibilityOld);
+    currentRnMapboxMapView.includes(rnMapboxSetSourceVisibilityOld) ||
+    currentRnMapboxMapView.includes(rnMapboxMapViewAccessTokenOld);
   const rnMapboxNativeUserLocationNeedsPatch =
     currentRnMapboxNativeUserLocation.includes(rnMapboxPuckBearingTypeOld) ||
     currentRnMapboxNativeUserLocation.includes(rnMapboxPuckBearingSetterOld) ||
@@ -500,7 +518,8 @@ if (
   } else {
     const patchedRnMapboxMapView = currentRnMapboxMapView
       .replace(rnMapboxLayerHelperOld, rnMapboxLayerHelperNew)
-      .replace(rnMapboxSetSourceVisibilityOld, rnMapboxSetSourceVisibilityNew);
+      .replace(rnMapboxSetSourceVisibilityOld, rnMapboxSetSourceVisibilityNew)
+      .replace(rnMapboxMapViewAccessTokenOld, rnMapboxMapViewAccessTokenNew);
     const patchedRnMapboxNativeUserLocation = currentRnMapboxNativeUserLocation
       .replace(rnMapboxPuckBearingTypeOld, rnMapboxPuckBearingTypeNew)
       .replace(rnMapboxPuckBearingSetterOld, rnMapboxPuckBearingSetterNew);

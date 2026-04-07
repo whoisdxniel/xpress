@@ -52,6 +52,17 @@ const expoEnumerablePath = path.join(
   "Enumerable.swift"
 );
 
+const expoPropertyComponentPath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "expo-modules-core",
+  "ios",
+  "Swift",
+  "Objects",
+  "PropertyComponent.swift"
+);
+
 const brokenBoostUrl =
   "https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2";
 const officialBoostUrl =
@@ -99,6 +110,26 @@ const expoDynamicEnumTypeNew = [
 ].join("\n");
 const expoDynamicEnumCastOld = "    return try innerType.create(fromRawValue: value)";
 const expoDynamicEnumCastNew = "    return try innerType.createAny(fromRawValue: value)";
+const expoPropertyGetterGuardOld = [
+  "      guard let getter = self.getter else {",
+  "        return",
+  "      }",
+].join("\n");
+const expoPropertyGetterGuardNew = [
+  "      guard let getter = self.getter else {",
+  "        return nil",
+  "      }",
+].join("\n");
+const expoPropertySetterGuardOld = [
+  "      guard let setter = self.setter else {",
+  "        return",
+  "      }",
+].join("\n");
+const expoPropertySetterGuardNew = [
+  "      guard let setter = self.setter else {",
+  "        return nil",
+  "      }",
+].join("\n");
 
 if (!fs.existsSync(boostPodspecPath)) {
   console.log("[postinstall] boost.podspec no existe; se omite ese parche iOS.");
@@ -136,12 +167,18 @@ if (!fs.existsSync(rnMapboxPodspecPath)) {
   }
 }
 
-if (!fs.existsSync(expoDynamicTypePath) || !fs.existsSync(expoDynamicEnumTypePath) || !fs.existsSync(expoEnumerablePath)) {
+if (
+  !fs.existsSync(expoDynamicTypePath) ||
+  !fs.existsSync(expoDynamicEnumTypePath) ||
+  !fs.existsSync(expoEnumerablePath) ||
+  !fs.existsSync(expoPropertyComponentPath)
+) {
   console.log("[postinstall] expo-modules-core no existe; se omite ese parche iOS.");
 } else {
   const currentDynamicType = fs.readFileSync(expoDynamicTypePath, "utf8");
   const currentDynamicEnumType = fs.readFileSync(expoDynamicEnumTypePath, "utf8");
   const currentEnumerable = fs.readFileSync(expoEnumerablePath, "utf8");
+  const currentPropertyComponent = fs.readFileSync(expoPropertyComponentPath, "utf8");
 
   const enumerableNeedsPatch =
     currentEnumerable.includes(expoEnumerableProtocolOld) ||
@@ -152,8 +189,11 @@ if (!fs.existsSync(expoDynamicTypePath) || !fs.existsSync(expoDynamicEnumTypePat
     currentDynamicEnumType.includes("let innerType: any Enumerable.Type") ||
     currentDynamicEnumType.includes("let innerType: Enumerable.Type") ||
     currentDynamicEnumType.includes(expoDynamicEnumCastOld);
+  const propertyComponentNeedsPatch =
+    currentPropertyComponent.includes(expoPropertyGetterGuardOld) ||
+    currentPropertyComponent.includes(expoPropertySetterGuardOld);
 
-  if (!enumerableNeedsPatch && !dynamicTypeNeedsPatch && !dynamicEnumNeedsPatch) {
+  if (!enumerableNeedsPatch && !dynamicTypeNeedsPatch && !dynamicEnumNeedsPatch && !propertyComponentNeedsPatch) {
     console.log("[postinstall] expo-modules-core ya es compatible con Swift 5.5/Xcode 13.");
   } else {
     const patchedEnumerable = currentEnumerable
@@ -167,10 +207,14 @@ if (!fs.existsSync(expoDynamicTypePath) || !fs.existsSync(expoDynamicEnumTypePat
       .replace("let innerType: any Enumerable.Type", "let innerType: AnyEnumerable.Type")
       .replace("let innerType: Enumerable.Type", "let innerType: AnyEnumerable.Type")
       .replace(expoDynamicEnumCastOld, expoDynamicEnumCastNew);
+    const patchedPropertyComponent = currentPropertyComponent
+      .replace(expoPropertyGetterGuardOld, expoPropertyGetterGuardNew)
+      .replace(expoPropertySetterGuardOld, expoPropertySetterGuardNew);
 
     fs.writeFileSync(expoEnumerablePath, patchedEnumerable, "utf8");
     fs.writeFileSync(expoDynamicTypePath, patchedDynamicType, "utf8");
     fs.writeFileSync(expoDynamicEnumTypePath, patchedDynamicEnumType, "utf8");
+    fs.writeFileSync(expoPropertyComponentPath, patchedPropertyComponent, "utf8");
     console.log("[postinstall] expo-modules-core ajustado para Swift 5.5/Xcode 13.");
   }
 }

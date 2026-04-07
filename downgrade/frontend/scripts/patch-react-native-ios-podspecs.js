@@ -115,9 +115,14 @@ const expoPropertyGetterGuardOld = [
   "        return",
   "      }",
 ].join("\n");
-const expoPropertyGetterGuardNew = [
+const expoPropertyGetterGuardNil = [
   "      guard let getter = self.getter else {",
   "        return nil",
+  "      }",
+].join("\n");
+const expoPropertyGetterGuardNew = [
+  "      guard let getter = self.getter else {",
+  "        return Optional<Any>.none as Any",
   "      }",
 ].join("\n");
 const expoPropertySetterGuardOld = [
@@ -125,9 +130,14 @@ const expoPropertySetterGuardOld = [
   "        return",
   "      }",
 ].join("\n");
-const expoPropertySetterGuardNew = [
+const expoPropertySetterGuardNil = [
   "      guard let setter = self.setter else {",
   "        return nil",
+  "      }",
+].join("\n");
+const expoPropertySetterGuardNew = [
+  "      guard let setter = self.setter else {",
+  "        return Optional<Any>.none as Any",
   "      }",
 ].join("\n");
 
@@ -191,7 +201,9 @@ if (
     currentDynamicEnumType.includes(expoDynamicEnumCastOld);
   const propertyComponentNeedsPatch =
     currentPropertyComponent.includes(expoPropertyGetterGuardOld) ||
-    currentPropertyComponent.includes(expoPropertySetterGuardOld);
+    currentPropertyComponent.includes(expoPropertyGetterGuardNil) ||
+    currentPropertyComponent.includes(expoPropertySetterGuardOld) ||
+    currentPropertyComponent.includes(expoPropertySetterGuardNil);
 
   if (!enumerableNeedsPatch && !dynamicTypeNeedsPatch && !dynamicEnumNeedsPatch && !propertyComponentNeedsPatch) {
     console.log("[postinstall] expo-modules-core ya es compatible con Swift 5.5/Xcode 13.");
@@ -209,8 +221,9 @@ if (
       .replace(expoDynamicEnumCastOld, expoDynamicEnumCastNew);
     const patchedPropertyComponent = currentPropertyComponent
       .replace(expoPropertyGetterGuardOld, expoPropertyGetterGuardNew)
-      .replace(expoPropertySetterGuardOld, expoPropertySetterGuardNew);
-
+      .replace(expoPropertyGetterGuardNil, expoPropertyGetterGuardNew)
+      .replace(expoPropertySetterGuardOld, expoPropertySetterGuardNew)
+      .replace(expoPropertySetterGuardNil, expoPropertySetterGuardNew);
     fs.writeFileSync(expoEnumerablePath, patchedEnumerable, "utf8");
     fs.writeFileSync(expoDynamicTypePath, patchedDynamicType, "utf8");
     fs.writeFileSync(expoDynamicEnumTypePath, patchedDynamicEnumType, "utf8");

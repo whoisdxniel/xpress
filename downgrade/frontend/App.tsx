@@ -8,6 +8,29 @@ import { AppNavigator } from "./src/navigation/AppNavigator";
 
 enableScreens();
 
+const handledMapboxMessages = new Set<string>();
+const handledMapboxFragments = [
+  "No accessToken set",
+  "MapLoad error",
+  "HTTP status code 401",
+  "HTTP status code 403",
+];
+
+const mapboxLogger = (MapboxGL as any)?.Logger;
+if (typeof mapboxLogger?.setLogCallback === "function") {
+  mapboxLogger.setLogCallback((log: { message?: unknown }) => {
+    const message = typeof log?.message === "string" ? log.message : "";
+    if (!handledMapboxFragments.some((fragment) => message.includes(fragment))) return false;
+
+    if (!handledMapboxMessages.has(message)) {
+      handledMapboxMessages.add(message);
+      console.warn("Mapbox [warning]", message);
+    }
+
+    return true;
+  });
+}
+
 const mapboxToken = getMapboxAccessToken();
 
 if (mapboxToken) {

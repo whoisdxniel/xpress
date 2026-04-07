@@ -136,6 +136,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - Esta copia tambien parchea RNMapbox iOS en `RNMBXLayer.swift` y `RNMBXChangeLineOffsetsShapeAnimatorModule.swift` para evitar dos errores tipicos de Xcode 13: `Protocol 'Layer' as a type cannot conform to the protocol itself` y `Unable to infer complex closure return type`.
 - Si bajas cambios que toquen `rnmapbox.app.plugin.js` o el `postinstall` iOS, no alcanza con repetir `pod install` sobre una carpeta `ios/` vieja: vuelve a correr `npx expo prebuild --clean --platform ios` para regenerar Podfile, flags y settings nativos antes de abrir Xcode.
 - Esta copia carga un polyfill local de `URLSearchParams` desde el entrypoint para cubrir el runtime JS viejo de Expo 48 / RN 0.71 en iOS y evitar fallos como `URLSearchParams.set is not implemented`.
+- Si el token runtime de Mapbox responde `401/403`, el wrapper `AppMap` cae automaticamente a un estilo raster abierto para que el simulador y las pantallas sigan funcionando mientras corriges el token publico; el routing ya intenta Mapbox primero y luego OSRM.
 - Esta copia ya no depende de `gap` incompatible con RN 0.70 porque se subio a RN 0.71 dentro del mismo downgrade.
 - En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
 - Sin APNs no hay equivalencia con Android cuando la app esta cerrada; el objetivo actual sigue siendo foreground realtime estable.

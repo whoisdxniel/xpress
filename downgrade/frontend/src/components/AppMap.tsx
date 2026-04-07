@@ -1,7 +1,8 @@
-import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import MapboxGL from "@rnmapbox/maps";
 
+import { forceFallbackMapStyle, getCachedMapStyleMode, getFallbackMapStyleJSON, resolveMapStyleMode, type MapStyleMode } from "../config/mapbox";
 import { colors } from "../theme/colors";
 
 export type LatLng = { latitude: number; longitude: number };
@@ -96,8 +97,22 @@ function toPosition(c: LatLng): [number, number] {
 export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const cameraRef = useRef<any>(null);
   const lastMarkerTapAtRef = useRef<number>(0);
+  const [styleMode, setStyleMode] = useState<MapStyleMode>(() => getCachedMapStyleMode());
 
   const interactive = props.interactive ?? true;
+
+  useEffect(() => {
+    let alive = true;
+
+    void resolveMapStyleMode().then((nextMode) => {
+      if (!alive) return;
+      setStyleMode(nextMode);
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const defaultSettings = useMemo(() => {
     return {
@@ -204,16 +219,24 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       });
   }, [props.markers]);
 
+  const useFallbackStyle = styleMode === "fallback";
+
   return (
     <MapboxGL.MapView
       style={[StyleSheet.absoluteFill, props.style]}
-      styleURL={MapboxGL.StyleURL.Street}
+      styleURL={useFallbackStyle ? undefined : MapboxGL.StyleURL.Street}
+      styleJSON={useFallbackStyle ? getFallbackMapStyleJSON() : undefined}
       rotateEnabled={interactive ? (props.rotateEnabled ?? true) : false}
       pitchEnabled={interactive ? (props.pitchEnabled ?? false) : false}
       scrollEnabled={interactive ? (props.scrollEnabled ?? true) : false}
       zoomEnabled={interactive ? (props.zoomEnabled ?? true) : false}
       onPress={onMapPress as any}
       onDidFinishLoadingMap={() => props.onMapReady?.()}
+      onMapLoadingError={() => {
+        if (useFallbackStyle) return;
+        forceFallbackMapStyle();
+        setStyleMode("fallback");
+      }}
       pointerEvents={interactive ? "auto" : "none"}
       onTouchStart={() => {
         if (!interactive) return;

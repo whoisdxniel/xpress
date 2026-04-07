@@ -96,6 +96,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
   - runtime: `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`
   - build nativo iOS: `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`
   - si ya usas `MAPBOX_DOWNLOADS_TOKEN`, `app.config.js` lo reutiliza
+  - `app.config.js` tambien copia el token runtime y otros `EXPO_PUBLIC_*` relevantes a `expo.extra`, para que el dev client y el archive no dependan solo de `process.env`
 
 ### Backend
 
@@ -119,6 +120,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 7. Entrar a `ios/` y ejecutar `pod install`.
 8. Abrir `ios/*.xcworkspace` en Xcode 13.2.1 o ejecutar `npx expo run:ios --device`.
 9. Si compila en dispositivo, usar Xcode para Archive y exportar el IPA.
+10. Si cambias `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` u otro `EXPO_PUBLIC_*`, reinicia Metro y vuelve a compilar la app para que `process.env` y `expo.extra` queden sincronizados.
 
 ## Notas importantes
 
@@ -132,6 +134,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - Esta copia tambien parchea RNMapbox iOS en `RNMBXMapView.swift` y `RNMBXNativeUserLocation.swift`, porque la rama actual de `@rnmapbox/maps 10.2.10` todavia trae codigo pensado para Swift mas nuevo y para `PuckBearing` de Mapbox 11, mientras que esta copia downgrade fija Mapbox iOS `10.13.1`.
 - Esta copia tambien parchea RNMapbox iOS en `RNMBXLayer.swift` y `RNMBXChangeLineOffsetsShapeAnimatorModule.swift` para evitar dos errores tipicos de Xcode 13: `Protocol 'Layer' as a type cannot conform to the protocol itself` y `Unable to infer complex closure return type`.
 - Si bajas cambios que toquen `rnmapbox.app.plugin.js` o el `postinstall` iOS, no alcanza con repetir `pod install` sobre una carpeta `ios/` vieja: vuelve a correr `npx expo prebuild --clean --platform ios` para regenerar Podfile, flags y settings nativos antes de abrir Xcode.
+- Esta copia carga un polyfill local de `URLSearchParams` desde el entrypoint para cubrir el runtime JS viejo de Expo 48 / RN 0.71 en iOS y evitar fallos como `URLSearchParams.set is not implemented`.
 - Esta copia ya no depende de `gap` incompatible con RN 0.70 porque se subio a RN 0.71 dentro del mismo downgrade.
 - En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
 - Sin APNs no hay equivalencia con Android cuando la app esta cerrada; el objetivo actual sigue siendo foreground realtime estable.

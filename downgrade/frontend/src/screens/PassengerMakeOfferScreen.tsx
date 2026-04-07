@@ -20,6 +20,7 @@ import { ensureForegroundPermission, getCurrentCoords, getFastCoords, readCached
 import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { ApiError } from "../lib/api";
 import { apiGetPublicZones, type PublicZone } from "../config/config.api";
+import { getOperatorPhoneOverride } from "../config/runtime";
 import { buildWhatsappLink } from "../utils/whatsapp";
 import { getMatchingRadiusM } from "../config/matchingRadius";
 
@@ -66,8 +67,8 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
 
   const operatorPhone = useMemo(() => {
     const fromConfig = auth.appConfig?.zoeWhatsappPhone;
-    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+    const fromEnv = getOperatorPhoneOverride();
+    return (fromConfig && fromConfig.trim()) || fromEnv || "04245687814";
   }, [auth.appConfig?.zoeWhatsappPhone]);
 
   const operatorLink = useMemo(() => {

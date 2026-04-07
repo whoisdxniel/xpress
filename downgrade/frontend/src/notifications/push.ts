@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { BACKGROUND_NOTIFICATION_TASK } from "./backgroundSoundTask";
+import { getIOSPushEnabledOverride } from "../config/runtime";
 import {
   ensureAndroidSilentChannel,
   handleIncomingSoundEventFromNotification,
@@ -15,7 +16,7 @@ const LOCAL_MARKER_KEY = "__xpress_local";
 
 export function isIOSPushEnabled() {
   if (Platform.OS !== "ios") return true;
-  return process.env.EXPO_PUBLIC_IOS_PUSH_ENABLED === "1";
+  return getIOSPushEnabledOverride();
 }
 
 function extractSoundNameForHandler(notification: Notifications.Notification): string {

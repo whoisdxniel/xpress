@@ -17,6 +17,7 @@ import { formatCop } from "../utils/currency";
 import { buildTelUrl, openDialer } from "../utils/phone";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
+import { getOperatorPhoneOverride } from "../config/runtime";
 import { subscribeRealtimeEvent } from "../realtime/socket";
 import { handleRideChangedForegroundRealtime } from "../notifications/foregroundRealtime";
 
@@ -85,8 +86,8 @@ export function PassengerWaitingScreen({ route, navigation }: Props) {
 
   const operatorPhone = useMemo(() => {
     const fromConfig = auth.appConfig?.zoeWhatsappPhone;
-    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+    const fromEnv = getOperatorPhoneOverride();
+    return (fromConfig && fromConfig.trim()) || fromEnv || "04245687814";
   }, [auth.appConfig?.zoeWhatsappPhone]);
   const operatorLink = useMemo(() => {
     return buildWhatsappLink({

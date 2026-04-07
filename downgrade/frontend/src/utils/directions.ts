@@ -1,3 +1,5 @@
+import { getMapboxAccessToken, getOsrmBaseUrlOverride } from "../config/runtime";
+
 export type Coords = { lat: number; lng: number };
 export type TimedCoords = Coords & { ts?: number; accuracy?: number | null };
 
@@ -160,9 +162,7 @@ async function fetchMapboxMatchedTraceDistance(points: TimedCoords[]): Promise<n
 }
 
 function mapboxAccessToken(): string | null {
-  const raw = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_ACCESS_TOKEN;
-  const token = typeof raw === "string" ? raw.trim() : "";
-  return token || null;
+  return getMapboxAccessToken();
 }
 
 function parseRoutePath(coords: unknown): { latitude: number; longitude: number }[] | null {
@@ -250,8 +250,7 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<any
 }
 
 function osrmBaseUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_OSRM_BASE_URL;
-  const base = (fromEnv && fromEnv.trim()) || "https://router.project-osrm.org";
+  const base = getOsrmBaseUrlOverride() || "https://router.project-osrm.org";
   return base.replace(/\/$/, "");
 }
 

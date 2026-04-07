@@ -15,6 +15,7 @@ import { formatCop, formatSecondaryFromCop } from "../utils/currency";
 import { apiCreateRide, apiNearbyDrivers } from "../rides/rides.api";
 import type { NearbyDriver, ServiceType } from "../rides/rides.types";
 import { apiEstimateOffer } from "../offers/offers.api";
+import { getOperatorPhoneOverride } from "../config/runtime";
 import { buildWhatsappLink } from "../utils/whatsapp";
 import { serviceTypeHasCargo, serviceTypeIconName, serviceTypeLabel } from "../utils/serviceType";
 import { absoluteUrl } from "../utils/url";
@@ -131,8 +132,8 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
   const operatorPhone = useMemo(() => {
     const fromConfig = auth.appConfig?.zoeWhatsappPhone;
-    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+    const fromEnv = getOperatorPhoneOverride();
+    return (fromConfig && fromConfig.trim()) || fromEnv || "04245687814";
   }, [auth.appConfig?.zoeWhatsappPhone]);
 
   const operatorLink = useMemo(() => {

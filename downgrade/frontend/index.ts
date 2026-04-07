@@ -1,5 +1,7 @@
 import { registerRootComponent } from 'expo';
 
+import "./src/polyfills/urlSearchParams";
+
 // Define tasks (incl. notificaciones en background) antes de registrar el root.
 import "./src/notifications/backgroundSoundTask";
 import "./src/location/driverBackgroundLocationTask";

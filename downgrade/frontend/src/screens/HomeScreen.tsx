@@ -13,6 +13,7 @@ import { ReadOnlyField } from "../components/ReadOnlyField";
 import { MiniRouteMap } from "../components/MiniRouteMap";
 import { MiniMeetMap } from "../components/MiniMeetMap";
 import { Ionicons } from "@expo/vector-icons";
+import { getMeterIncludedKmOverride, getOperatorPhoneOverride } from "../config/runtime";
 import { buildWhatsappLink } from "../utils/whatsapp";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
@@ -196,9 +197,7 @@ export function HomeScreen({ navigation }: Props) {
   }, [userId, role, token]);
 
   const meterIncludedKm = useMemo(() => {
-    const raw = process.env.EXPO_PUBLIC_METER_INCLUDED_KM;
-    const n = raw != null ? Number(raw) : NaN;
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 3;
+    return getMeterIncludedKmOverride() ?? 3;
   }, []);
 
   const meterWatchRef = useRef<Location.LocationSubscription | null>(null);
@@ -220,8 +219,8 @@ export function HomeScreen({ navigation }: Props) {
 
   const operatorPhone = useMemo(() => {
     const fromConfig = auth.appConfig?.zoeWhatsappPhone;
-    const fromEnv = process.env.EXPO_PUBLIC_OPERATOR_PHONE;
-    return (fromConfig && fromConfig.trim()) || (fromEnv && fromEnv.trim()) || "04245687814";
+    const fromEnv = getOperatorPhoneOverride();
+    return (fromConfig && fromConfig.trim()) || fromEnv || "04245687814";
   }, [auth.appConfig?.zoeWhatsappPhone]);
 
   const operatorLink = useMemo(() => {

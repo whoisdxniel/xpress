@@ -3,16 +3,15 @@ import { enableScreens } from "react-native-screens";
 import MapboxGL from "@rnmapbox/maps";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/auth/AuthContext";
+import { getMapboxAccessToken } from "./src/config/runtime";
 import { AppNavigator } from "./src/navigation/AppNavigator";
 
 enableScreens();
 
-const mapboxToken =
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.MAPBOX_ACCESS_TOKEN;
+const mapboxToken = getMapboxAccessToken();
 
-if (mapboxToken && String(mapboxToken).trim()) {
-  MapboxGL.setAccessToken(String(mapboxToken).trim());
+if (mapboxToken) {
+  MapboxGL.setAccessToken(mapboxToken);
 }
 
 export default function App() {

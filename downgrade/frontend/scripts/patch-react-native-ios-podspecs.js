@@ -19,6 +19,28 @@ const rnMapboxPodspecPath = path.join(
   "rnmapbox-maps.podspec"
 );
 
+const rnMapboxMapViewPath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "@rnmapbox",
+  "maps",
+  "ios",
+  "RNMBX",
+  "RNMBXMapView.swift"
+);
+
+const rnMapboxNativeUserLocationPath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "@rnmapbox",
+  "maps",
+  "ios",
+  "RNMBX",
+  "RNMBXNativeUserLocation.swift"
+);
+
 const expoDynamicTypePath = path.join(
   __dirname,
   "..",
@@ -141,6 +163,160 @@ const expoPropertySetterGuardNew = [
   "      }",
 ].join("\n");
 
+const rnMapboxLayerHelperOld = [
+  "#if RNMBX_11",
+  "func getLayerSourceDetails(layer: (any Layer)?) -> LayerSourceDetails? {",
+  "    if let circleLayer = layer as? CircleLayer {",
+  "        return (circleLayer.source, circleLayer.sourceLayer)",
+  "    } else if let fillExtrusionLayer = layer as? FillExtrusionLayer {",
+  "        return (fillExtrusionLayer.source, fillExtrusionLayer.sourceLayer)",
+  "    } else if let fillLayer = layer as? FillLayer {",
+  "        return (fillLayer.source, fillLayer.sourceLayer)",
+  "    } else if let heatmapLayer = layer as? HeatmapLayer {",
+  "        return (heatmapLayer.source, heatmapLayer.sourceLayer)",
+  "    } else if let hillshadeLayer = layer as? HillshadeLayer {",
+  "        return (hillshadeLayer.source, hillshadeLayer.sourceLayer)",
+  "    } else if let lineLayer = layer as? LineLayer {",
+  "        return (lineLayer.source, lineLayer.sourceLayer)",
+  "    } else if let rasterLayer = layer as? RasterLayer {",
+  "        return (rasterLayer.source, rasterLayer.sourceLayer)",
+  "    } else if let symbolLayer = layer as? SymbolLayer {",
+  "        return (symbolLayer.source, symbolLayer.sourceLayer)",
+  "    } else {",
+  "        return nil",
+  "    }",
+  "}",
+  "#endif",
+].join("\n");
+const rnMapboxLayerHelperNew = [
+  "#if RNMBX_11",
+  "func getLayerSourceDetails(style: Style, layerId: String) -> LayerSourceDetails? {",
+  "    if let circleLayer = try? style.layer(withId: layerId, type: CircleLayer.self) {",
+  "        return (circleLayer.source, circleLayer.sourceLayer)",
+  "    } else if let fillExtrusionLayer = try? style.layer(withId: layerId, type: FillExtrusionLayer.self) {",
+  "        return (fillExtrusionLayer.source, fillExtrusionLayer.sourceLayer)",
+  "    } else if let fillLayer = try? style.layer(withId: layerId, type: FillLayer.self) {",
+  "        return (fillLayer.source, fillLayer.sourceLayer)",
+  "    } else if let heatmapLayer = try? style.layer(withId: layerId, type: HeatmapLayer.self) {",
+  "        return (heatmapLayer.source, heatmapLayer.sourceLayer)",
+  "    } else if let hillshadeLayer = try? style.layer(withId: layerId, type: HillshadeLayer.self) {",
+  "        return (hillshadeLayer.source, hillshadeLayer.sourceLayer)",
+  "    } else if let lineLayer = try? style.layer(withId: layerId, type: LineLayer.self) {",
+  "        return (lineLayer.source, lineLayer.sourceLayer)",
+  "    } else if let rasterLayer = try? style.layer(withId: layerId, type: RasterLayer.self) {",
+  "        return (rasterLayer.source, rasterLayer.sourceLayer)",
+  "    } else if let rasterParticleLayer = try? style.layer(withId: layerId, type: RasterParticleLayer.self) {",
+  "        return (rasterParticleLayer.source, rasterParticleLayer.sourceLayer)",
+  "    } else if let symbolLayer = try? style.layer(withId: layerId, type: SymbolLayer.self) {",
+  "        return (symbolLayer.source, symbolLayer.sourceLayer)",
+  "    } else if let modelLayer = try? style.layer(withId: layerId, type: ModelLayer.self) {",
+  "        return (modelLayer.source, modelLayer.sourceLayer)",
+  "    } else {",
+  "        return nil",
+  "    }",
+  "}",
+  "#endif",
+].join("\n");
+const rnMapboxSetSourceVisibilityOld = [
+  "extension RNMBXMapView {",
+  "  func setSourceVisibility(_ visible: Bool, sourceId: String, sourceLayerId: String?) -> Void {",
+  "    let style = self.mapboxMap.style",
+  "",
+  "    style.allLayerIdentifiers.forEach { layerInfo in",
+  "      let layer = logged(\"setSourceVisibility.layer\", info: { \"\\(layerInfo.id)\" }) {",
+  "        try style.layer(withId: layerInfo.id)",
+  "      }",
+  "",
+  "      #if RNMBX_11",
+  "        let sourceDetails = getLayerSourceDetails(layer: layer)",
+  "      #else",
+  "        let sourceDetails: LayerSourceDetails? = (source: layer?.source, sourceLayer: layer?.sourceLayer)",
+  "      #endif",
+  "",
+  "      if let layer = layer, let sourceDetails = sourceDetails {",
+  "        if sourceDetails.source == sourceId {",
+  "          var good = true",
+  "          if let sourceLayerId = sourceLayerId {",
+  "            if sourceLayerId != sourceDetails.sourceLayer {",
+  "              good = false",
+  "            }",
+  "          }",
+  "          if good {",
+  "            do {",
+  "              try style.setLayerProperty(for: layer.id, property: \"visibility\", value: visible ? \"visible\" : \"none\")",
+  "            } catch {",
+  "              Logger.log(level: .error, message: \"Cannot change visibility of \\(layer.id) with source: \\(sourceId)\")",
+  "            }",
+  "          }",
+  "        }",
+  "      }",
+  "    }",
+  "  }",
+  "}",
+].join("\n");
+const rnMapboxSetSourceVisibilityNew = [
+  "extension RNMBXMapView {",
+  "  func setSourceVisibility(_ visible: Bool, sourceId: String, sourceLayerId: String?) -> Void {",
+  "    let style = self.mapboxMap.style",
+  "",
+  "    style.allLayerIdentifiers.forEach { layerInfo in",
+  "      #if RNMBX_11",
+  "        let sourceDetails = getLayerSourceDetails(style: style, layerId: layerInfo.id)",
+  "      #else",
+  "        let layer = logged(\"setSourceVisibility.layer\", info: { \"\\(layerInfo.id)\" }) {",
+  "          try style.layer(withId: layerInfo.id)",
+  "        }",
+  "        let sourceDetails: LayerSourceDetails? = (source: layer?.source, sourceLayer: layer?.sourceLayer)",
+  "      #endif",
+  "",
+  "      if let sourceDetails = sourceDetails {",
+  "        if sourceDetails.source == sourceId {",
+  "          var good = true",
+  "          if let sourceLayerId = sourceLayerId {",
+  "            if sourceLayerId != sourceDetails.sourceLayer {",
+  "              good = false",
+  "            }",
+  "          }",
+  "          if good {",
+  "            do {",
+  "              try style.setLayerProperty(for: layerInfo.id, property: \"visibility\", value: visible ? \"visible\" : \"none\")",
+  "            } catch {",
+  "              Logger.log(level: .error, message: \"Cannot change visibility of \\(layerInfo.id) with source: \\(sourceId)\")",
+  "            }",
+  "          }",
+  "        }",
+  "      }",
+  "    }",
+  "  }",
+  "}",
+].join("\n");
+const rnMapboxPuckBearingTypeOld = "  var _puckBearing: PuckBearing? = nil";
+const rnMapboxPuckBearingTypeNew = [
+  "#if RNMBX_11",
+  "  typealias RNMBXPuckBearing = PuckBearing",
+  "#else",
+  "  typealias RNMBXPuckBearing = PuckBearingSource",
+  "#endif",
+  "",
+  "  var _puckBearing: RNMBXPuckBearing? = nil",
+].join("\n");
+const rnMapboxPuckBearingSetterOld = [
+  "    location.options.puckBearingEnabled = puckBearingEnabled",
+  "    if let puckBearing = _puckBearing {",
+  "      location.options.puckBearing = puckBearing",
+  "    }",
+].join("\n");
+const rnMapboxPuckBearingSetterNew = [
+  "    location.options.puckBearingEnabled = puckBearingEnabled",
+  "    if let puckBearing = _puckBearing {",
+  "      #if RNMBX_11",
+  "        location.options.puckBearing = puckBearing",
+  "      #else",
+  "        location.options.puckBearingSource = puckBearing",
+  "      #endif",
+  "    }",
+].join("\n");
+
 if (!fs.existsSync(boostPodspecPath)) {
   console.log("[postinstall] boost.podspec no existe; se omite ese parche iOS.");
 } else {
@@ -174,6 +350,36 @@ if (!fs.existsSync(rnMapboxPodspecPath)) {
 
     fs.writeFileSync(rnMapboxPodspecPath, patchedRnMapboxPodspec, "utf8");
     console.log("[postinstall] rnmapbox-maps.podspec fijado a Turf 2.6.1 para Xcode 13.");
+  }
+}
+
+if (!fs.existsSync(rnMapboxMapViewPath) || !fs.existsSync(rnMapboxNativeUserLocationPath)) {
+  console.log("[postinstall] RNMapbox iOS sources no existen; se omite ese parche Swift.");
+} else {
+  const currentRnMapboxMapView = fs.readFileSync(rnMapboxMapViewPath, "utf8");
+  const currentRnMapboxNativeUserLocation = fs.readFileSync(rnMapboxNativeUserLocationPath, "utf8");
+
+  const rnMapboxMapViewNeedsPatch =
+    currentRnMapboxMapView.includes(rnMapboxLayerHelperOld) ||
+    currentRnMapboxMapView.includes(rnMapboxSetSourceVisibilityOld);
+  const rnMapboxNativeUserLocationNeedsPatch =
+    currentRnMapboxNativeUserLocation.includes(rnMapboxPuckBearingTypeOld) ||
+    currentRnMapboxNativeUserLocation.includes(rnMapboxPuckBearingSetterOld) ||
+    !currentRnMapboxNativeUserLocation.includes("typealias RNMBXPuckBearing = PuckBearingSource");
+
+  if (!rnMapboxMapViewNeedsPatch && !rnMapboxNativeUserLocationNeedsPatch) {
+    console.log("[postinstall] RNMapbox iOS ya es compatible con Swift 5.5 y Mapbox 10 para Xcode 13.");
+  } else {
+    const patchedRnMapboxMapView = currentRnMapboxMapView
+      .replace(rnMapboxLayerHelperOld, rnMapboxLayerHelperNew)
+      .replace(rnMapboxSetSourceVisibilityOld, rnMapboxSetSourceVisibilityNew);
+    const patchedRnMapboxNativeUserLocation = currentRnMapboxNativeUserLocation
+      .replace(rnMapboxPuckBearingTypeOld, rnMapboxPuckBearingTypeNew)
+      .replace(rnMapboxPuckBearingSetterOld, rnMapboxPuckBearingSetterNew);
+
+    fs.writeFileSync(rnMapboxMapViewPath, patchedRnMapboxMapView, "utf8");
+    fs.writeFileSync(rnMapboxNativeUserLocationPath, patchedRnMapboxNativeUserLocation, "utf8");
+    console.log("[postinstall] RNMapbox iOS ajustado para Swift 5.5 y Mapbox 10 en Xcode 13.");
   }
 }
 

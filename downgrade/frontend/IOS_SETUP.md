@@ -111,6 +111,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
   - esta copia ya trae `index.js` versionado, asi que Expo no deberia volver a reescribir `package.json` en cada `prebuild`.
   - en la Mac vieja, ese mismo `postinstall` tambien fija `Turf` en `2.6.1` dentro del podspec local de `@rnmapbox/maps` para evitar el error de link con `Swift.Sendable` al compilar simulador en Xcode 13.
   - ese mismo `postinstall` tambien parchea `expo-modules-core` para reemplazar dos usos de la palabra clave `any` que Swift 5.5 de Xcode 13.2.1 no soporta.
+  - ese mismo `postinstall` tambien parchea RNMapbox iOS para dos compatibilidades extra de Xcode 13: evita el uso del existencial `any Layer` en Swift 5.5 y ajusta `PuckBearing` a `PuckBearingSource` cuando la copia downgrade usa Mapbox iOS `10.13.1`.
 4. Exportar `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` y `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`.
 5. Antes de ejecutar `expo prebuild`, exportar `RUBYOPT=-rlogger` en esa misma terminal para que Expo pueda detectar correctamente `pod` y no intente reinstalar CocoaPods por gem o Homebrew.
 6. Ejecutar `npx expo prebuild --clean --platform ios`.
@@ -127,6 +128,8 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - Esta copia tambien versiona `index.js` y usa `main: index.js` para evitar que `expo prebuild` ensucie `package.json` en cada corrida.
 - Esta copia tambien fija `Turf` en `2.6.1` dentro del podspec local de RNMapbox, porque `Turf 2.7.1+` introduce cambios de `Sendable` y `Turf 2.8.0` ya sube el minimo a Xcode 14.1, lo que rompe el simulador Intel con Xcode 13.2.1.
 - Esta copia tambien parchea `expo-modules-core` en `DynamicType.swift` y `DynamicEnumType.swift` para quitar la palabra clave `any`, porque esa sintaxis recien aparece en Swift mas nuevo que el incluido en Xcode 13.2.1.
+- Esta copia tambien parchea RNMapbox iOS en `RNMBXMapView.swift` y `RNMBXNativeUserLocation.swift`, porque la rama actual de `@rnmapbox/maps 10.2.10` todavia trae codigo pensado para Swift mas nuevo y para `PuckBearing` de Mapbox 11, mientras que esta copia downgrade fija Mapbox iOS `10.13.1`.
+- Si bajas cambios que toquen `rnmapbox.app.plugin.js` o el `postinstall` iOS, no alcanza con repetir `pod install` sobre una carpeta `ios/` vieja: vuelve a correr `npx expo prebuild --clean --platform ios` para regenerar Podfile, flags y settings nativos antes de abrir Xcode.
 - Esta copia ya no depende de `gap` incompatible con RN 0.70 porque se subio a RN 0.71 dentro del mismo downgrade.
 - En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
 - Sin APNs no hay equivalencia con Android cuando la app esta cerrada; el objetivo actual sigue siendo foreground realtime estable.

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { z } from "zod";
 import { Screen } from "../components/Screen";
@@ -61,7 +61,7 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <Screen keyboardAvoiding>
-      <Modal visible={loading} transparent animationType="fade" statusBarTranslucent>
+      {loading ? (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingBackdrop} />
           <View style={styles.loadingCard}>
@@ -69,7 +69,7 @@ export function LoginScreen({ navigation }: Props) {
             <ActivityIndicator color={colors.gold} />
           </View>
         </View>
-      </Modal>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
@@ -143,7 +143,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   loadingOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,

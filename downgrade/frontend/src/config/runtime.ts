@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { NativeModules } from "react-native";
 
 type RuntimeRecord = Record<string, unknown>;
 
@@ -37,6 +38,18 @@ function getProcessEnvValue(key: string): string | null {
   return normalizeString(maybeProcess?.env?.[key]);
 }
 
+function getNativeModuleValue(keys: string[]): string | null {
+  const nativeMapboxModule = (NativeModules as any)?.RNMBXModule;
+  if (!nativeMapboxModule) return null;
+
+  for (const key of keys) {
+    const value = normalizeString(nativeMapboxModule[key]);
+    if (value) return value;
+  }
+
+  return null;
+}
+
 function getRuntimeString(envKeys: string[], extraKeys: string[]): string | null {
   const extra = getExpoExtra();
 
@@ -54,9 +67,12 @@ function getRuntimeString(envKeys: string[], extraKeys: string[]): string | null
 }
 
 export function getMapboxAccessToken(): string | null {
-  return getRuntimeString(
+  return (
+    getRuntimeString(
     ["EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN", "MAPBOX_ACCESS_TOKEN"],
     ["mapboxAccessToken", "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN", "MAPBOX_ACCESS_TOKEN"]
+    ) ||
+    getNativeModuleValue(["AccessToken", "accessToken", "MBXAccessToken", "MGLMapboxAccessToken"])
   );
 }
 

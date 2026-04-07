@@ -141,5 +141,6 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
 - Sin APNs no hay equivalencia con Android cuando la app esta cerrada; el objetivo actual sigue siendo foreground realtime estable.
 - Push remoto iOS no funciona en simulator; prueba en iPhone fisico.
+- En iOS Simulator, si la app queda sin coordenadas reales, activa una ubicación simulada desde `Features > Location` (por ejemplo `City Run` o `Custom Location`) para probar mapas, pickup y cálculo de rutas.
 - El chofer debe aceptar permiso `Always` para que el tracking en segundo plano funcione bien.
 - El bundle identifier actual esperado por la app es `com.xpress.traslados`.

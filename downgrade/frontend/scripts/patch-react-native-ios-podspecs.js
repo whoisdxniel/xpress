@@ -64,6 +64,17 @@ const rnMapboxChangeLineOffsetsAnimatorPath = path.join(
   "RNMBXChangeLineOffsetsShapeAnimatorModule.swift"
 );
 
+const rnMapboxModulePath = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "@rnmapbox",
+  "maps",
+  "ios",
+  "RNMBX",
+  "RNMBXModule.swift"
+);
+
 const expoDynamicTypePath = path.join(
   __dirname,
   "..",
@@ -367,6 +378,45 @@ const rnMapboxBuildLineStringNew = [
   "  return .init(coordinates)",
   "}",
 ].join("\n");
+const rnMapboxDefaultAccessTokenOld = [
+  "class RNMBXModule : NSObject {",
+  "  ",
+  "  public static var accessToken : String? {",
+].join("\n");
+const rnMapboxDefaultAccessTokenNew = [
+  "class RNMBXModule : NSObject {",
+  "  static func defaultAccessToken() -> String? {",
+  "    if let token = accessToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {",
+  "      return token",
+  "    }",
+  "",
+  "    let keys = [\"MBXAccessToken\", \"MGLMapboxAccessToken\"]",
+  "    for key in keys {",
+  "      if let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String {",
+  "        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)",
+  "        if !token.isEmpty {",
+  "          return token",
+  "        }",
+  "      }",
+  "    }",
+  "",
+  "    return nil",
+  "  }",
+  "",
+  "  override public init() {",
+  "    super.init()",
+  "    if let token = RNMBXModule.defaultAccessToken() {",
+  "      RNMBXModule.accessToken = token",
+  "    }",
+  "  }",
+  "  ",
+  "  public static var accessToken : String? {",
+].join("\n");
+const rnMapboxConstantsAccessTokenOld = '      "MapboxV10":true,';
+const rnMapboxConstantsAccessTokenNew = [
+  '      "MapboxV10":true,',
+  '      "AccessToken": RNMBXModule.defaultAccessToken() ?? "",',
+].join("\n");
 
 if (!fs.existsSync(boostPodspecPath)) {
   console.log("[postinstall] boost.podspec no existe; se omite ese parche iOS.");
@@ -408,13 +458,15 @@ if (
   !fs.existsSync(rnMapboxMapViewPath) ||
   !fs.existsSync(rnMapboxNativeUserLocationPath) ||
   !fs.existsSync(rnMapboxLayerPath) ||
-  !fs.existsSync(rnMapboxChangeLineOffsetsAnimatorPath)
+  !fs.existsSync(rnMapboxChangeLineOffsetsAnimatorPath) ||
+  !fs.existsSync(rnMapboxModulePath)
 ) {
   console.log("[postinstall] RNMapbox iOS sources no existen; se omite ese parche Swift.");
 } else {
   const currentRnMapboxMapView = fs.readFileSync(rnMapboxMapViewPath, "utf8");
   const currentRnMapboxNativeUserLocation = fs.readFileSync(rnMapboxNativeUserLocationPath, "utf8");
   const currentRnMapboxLayer = fs.readFileSync(rnMapboxLayerPath, "utf8");
+  const currentRnMapboxModule = fs.readFileSync(rnMapboxModulePath, "utf8");
   const currentRnMapboxChangeLineOffsetsAnimator = fs.readFileSync(
     rnMapboxChangeLineOffsetsAnimatorPath,
     "utf8"
@@ -433,12 +485,16 @@ if (
     !currentRnMapboxChangeLineOffsetsAnimator.includes(
       "let coordinates: [LocationCoordinate2D] = _coordinates.compactMap"
     );
+  const rnMapboxModuleNeedsPatch =
+    currentRnMapboxModule.includes(rnMapboxDefaultAccessTokenOld) ||
+    !currentRnMapboxModule.includes('"AccessToken": RNMBXModule.defaultAccessToken() ?? ""');
 
   if (
     !rnMapboxMapViewNeedsPatch &&
     !rnMapboxNativeUserLocationNeedsPatch &&
     !rnMapboxLayerNeedsPatch &&
-    !rnMapboxChangeLineOffsetsAnimatorNeedsPatch
+    !rnMapboxChangeLineOffsetsAnimatorNeedsPatch &&
+    !rnMapboxModuleNeedsPatch
   ) {
     console.log("[postinstall] RNMapbox iOS ya es compatible con Swift 5.5 y Mapbox 10 para Xcode 13.");
   } else {
@@ -452,6 +508,9 @@ if (
       rnMapboxSetBaseOptionsOld,
       rnMapboxSetBaseOptionsNew
     );
+    const patchedRnMapboxModule = currentRnMapboxModule
+      .replace(rnMapboxDefaultAccessTokenOld, rnMapboxDefaultAccessTokenNew)
+      .replace(rnMapboxConstantsAccessTokenOld, rnMapboxConstantsAccessTokenNew);
     const patchedRnMapboxChangeLineOffsetsAnimator = currentRnMapboxChangeLineOffsetsAnimator.replace(
       rnMapboxBuildLineStringOld,
       rnMapboxBuildLineStringNew
@@ -460,6 +519,7 @@ if (
     fs.writeFileSync(rnMapboxMapViewPath, patchedRnMapboxMapView, "utf8");
     fs.writeFileSync(rnMapboxNativeUserLocationPath, patchedRnMapboxNativeUserLocation, "utf8");
     fs.writeFileSync(rnMapboxLayerPath, patchedRnMapboxLayer, "utf8");
+    fs.writeFileSync(rnMapboxModulePath, patchedRnMapboxModule, "utf8");
     fs.writeFileSync(
       rnMapboxChangeLineOffsetsAnimatorPath,
       patchedRnMapboxChangeLineOffsetsAnimator,

@@ -442,6 +442,23 @@ const rnMapboxConstantsAccessTokenNew = [
   '      "MapboxV10":true,',
   rnMapboxConstantsAccessTokenLine,
 ].join("\n");
+const rnMapboxGetAccessTokenInsertion = [
+  "  @objc func setAccessToken(",
+  "    _ token: String, ",
+  "    resolver: RCTPromiseResolveBlock,",
+  "    rejecter: RCTPromiseRejectBlock) {",
+  "      RNMBXModule.accessToken = token",
+  "      resolver(token)",
+  "  }",
+  "",
+  "  @objc func getAccessToken(",
+  "    _ resolver: RCTPromiseResolveBlock,",
+  "    rejecter: RCTPromiseRejectBlock) {",
+  "      resolver(RNMBXModule.accessToken ?? RNMBXModule.defaultAccessToken() ?? \"\")",
+  "  }",
+  "  ",
+  "  @objc func addCustomHeader(_ headerName: String, forHeaderValue headerValue: String) {",
+].join("\n");
 
 if (!fs.existsSync(boostPodspecPath)) {
   console.log("[postinstall] boost.podspec no existe; se omite ese parche iOS.");
@@ -514,6 +531,7 @@ if (
   const rnMapboxModuleNeedsPatch =
     currentRnMapboxModule.includes(rnMapboxDefaultAccessTokenOld) ||
     /[ \t]*"AccessToken": RNMBXModule\.defaultAccessToken\(\) \?\? "",\r?\n(?:[ \t]*"AccessToken": RNMBXModule\.defaultAccessToken\(\) \?\? "",\r?\n)+/.test(currentRnMapboxModule) ||
+    !currentRnMapboxModule.includes("@objc func getAccessToken(") ||
     !currentRnMapboxModule.includes('"AccessToken": RNMBXModule.defaultAccessToken() ?? ""');
 
   if (
@@ -540,6 +558,13 @@ if (
       .replace(rnMapboxDefaultAccessTokenOld, rnMapboxDefaultAccessTokenNew);
 
     patchedRnMapboxModule = collapseRepeatedAccessTokenEntries(patchedRnMapboxModule);
+
+    if (!patchedRnMapboxModule.includes("@objc func getAccessToken(")) {
+      patchedRnMapboxModule = patchedRnMapboxModule.replace(
+        /  @objc func setAccessToken\([\s\S]*?resolver\(token\)\n  \}\n\s*  @objc func addCustomHeader\(_ headerName: String, forHeaderValue headerValue: String\) \{/,
+        rnMapboxGetAccessTokenInsertion
+      );
+    }
 
     if (!patchedRnMapboxModule.includes(rnMapboxConstantsAccessTokenLine)) {
       patchedRnMapboxModule = patchedRnMapboxModule.replace(

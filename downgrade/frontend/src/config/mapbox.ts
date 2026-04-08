@@ -1,4 +1,4 @@
-import { getMapboxAccessToken } from "./runtime";
+import { getMapboxAccessToken, loadMapboxAccessToken } from "./runtime";
 
 export type MapStyleMode = "mapbox" | "fallback";
 
@@ -78,7 +78,7 @@ export async function resolveMapStyleMode(): Promise<MapStyleMode> {
   if (pendingStyleMode) return pendingStyleMode;
 
   pendingStyleMode = (async () => {
-    const token = getMapboxAccessToken();
+    const token = (await loadMapboxAccessToken()) || getMapboxAccessToken();
     if (!token) {
       logFallbackReason("No hay token runtime de Mapbox disponible; se usara estilo raster fallback.");
       cachedStyleMode = "fallback";

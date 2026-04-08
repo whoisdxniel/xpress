@@ -1,0 +1,10 @@
+export const RUNTIME_BUILD_ENV = {
+  EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: null,
+  EXPO_PUBLIC_API_BASE_URL: null,
+  EXPO_PUBLIC_IOS_PUSH_ENABLED: null,
+  EXPO_PUBLIC_METER_INCLUDED_KM: null,
+  EXPO_PUBLIC_OPERATOR_PHONE: null,
+  EXPO_PUBLIC_OSRM_BASE_URL: null,
+} as const;
+
+export type RuntimeBuildEnvKey = keyof typeof RUNTIME_BUILD_ENV;

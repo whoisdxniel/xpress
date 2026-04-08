@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { enableScreens } from "react-native-screens";
 import MapboxGL from "@rnmapbox/maps";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/auth/AuthContext";
-import { getMapboxAccessToken } from "./src/config/runtime";
+import { getMapboxAccessToken, loadMapboxAccessToken } from "./src/config/runtime";
 import { AppNavigator } from "./src/navigation/AppNavigator";
 
 enableScreens();
@@ -43,6 +44,19 @@ if (mapboxToken) {
 }
 
 export default function App() {
+  useEffect(() => {
+    let alive = true;
+
+    void loadMapboxAccessToken().then((token) => {
+      if (!alive || !token) return;
+      MapboxGL.setAccessToken(token);
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AuthProvider>

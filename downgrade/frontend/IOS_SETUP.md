@@ -140,6 +140,75 @@ Si traes cambios nuevos de esta copia downgrade y quieres regenerar todo limpio 
 
 Si necesitas levantar Metro a mano antes o durante esa corrida nativa, usa `npm run start:dev-client:clear` en lugar de `npx expo start -c` para no abrir Expo Go.
 
+## Generar IPA y compartirla
+
+Con el log actual ya se puede decir esto con bastante seguridad:
+
+- Mapbox esta inicializando bien en iOS nativo.
+- El token runtime ya esta entrando.
+- No hay un error nativo bloqueando el arranque de la app.
+- El warning de `remote-notification` no bloquea compilar ni exportar el IPA.
+
+Lo que ese log no demuestra por si solo es si el mapa ya responde perfecto a gestos. Para eso, la validacion buena es correr en iPhone fisico desde Xcode antes de exportar.
+
+### Opcion A: enviar un IPA directo a una persona (Ad Hoc)
+
+Usa esta opcion solo si tienes el UDID del iPhone destino y acceso al Apple Developer del proyecto.
+
+1. Pedir a la persona el UDID del iPhone.
+2. Entrar al Apple Developer portal con la cuenta del proyecto.
+3. Registrar ese UDID en `Certificates, Identifiers & Profiles > Devices`.
+4. Actualizar o crear un provisioning profile tipo `Ad Hoc` para `com.xpress.traslados` incluyendo ese dispositivo.
+5. En la Mac, abrir `downgrade/frontend/ios/*.xcworkspace` en Xcode.
+6. Seleccionar `Any iOS Device (arm64)` o el iPhone conectado.
+7. Ir a `Product > Archive`.
+8. Cuando termine, abrir `Window > Organizer`.
+9. Seleccionar el archive nuevo y presionar `Distribute App`.
+10. Elegir `Ad Hoc`.
+11. Elegir `Export` usando el team/profile correctos.
+12. Xcode generara un `.ipa`.
+13. Para que la otra persona la instale, enviar:
+  - el archivo `.ipa`
+  - y preferiblemente un metodo de instalacion Ad Hoc como Apple Configurator, MDM o una pagina OTA interna
+
+Nota realista: mandar solo el `.ipa` por WhatsApp o correo no garantiza que la otra persona pueda instalarlo tocandolo sin mas. Para instalacion directa fuera de App Store, lo normal es `TestFlight`, `Apple Configurator`, MDM o un flujo OTA firmado.
+
+### Opcion B: compartirla facil con alguien (TestFlight)
+
+Si no quieres pelear con UDIDs, esta suele ser la mejor opcion.
+
+1. Abrir `downgrade/frontend/ios/*.xcworkspace` en Xcode.
+2. Seleccionar `Any iOS Device (arm64)`.
+3. Ir a `Product > Archive`.
+4. Abrir `Window > Organizer`.
+5. Seleccionar el archive y presionar `Distribute App`.
+6. Elegir `App Store Connect`.
+7. Subir el build.
+8. Entrar a App Store Connect.
+9. Ir a TestFlight.
+10. Esperar a que Apple procese el build.
+11. Agregar el correo del tester.
+12. La otra persona instala `TestFlight` en su iPhone y acepta la invitacion.
+
+### Flujo minimo recomendado antes de exportar
+
+1. `git pull origin main`
+2. `cd downgrade/frontend`
+3. `npm install`
+4. `export RUBYOPT=-rlogger`
+5. `npx expo prebuild --clean --platform ios`
+6. `cd ios && pod install`
+7. abrir `ios/*.xcworkspace`
+8. conectar un iPhone fisico y correr desde Xcode
+9. validar login, mapa, ubicacion y seleccion de destino
+10. si eso funciona, volver a `Product > Archive`
+
+### Que opcion conviene elegir
+
+- Si es una sola persona y tienes su UDID: `Ad Hoc`.
+- Si quieres que la instalen varias personas sin pedir UDID: `TestFlight`.
+- Si solo quieres saber si el mapa funciona con ubicacion real: primero correr en iPhone fisico desde Xcode, antes de exportar.
+
 ## Notas importantes
 
 - Para iOS downgrade, no uses `frontend/`; usa siempre `downgrade/frontend/`.

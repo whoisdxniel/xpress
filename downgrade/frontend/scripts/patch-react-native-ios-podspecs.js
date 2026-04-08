@@ -1,6 +1,13 @@
 const fs = require("fs");
 const path = require("path");
 
+function collapseRepeatedAccessTokenEntries(content) {
+  return content.replace(
+    /([ \t]*"AccessToken": RNMBXModule\.defaultAccessToken\(\) \?\? "",\r?\n)(?:[ \t]*"AccessToken": RNMBXModule\.defaultAccessToken\(\) \?\? "",\r?\n)+/g,
+    "$1"
+  );
+}
+
 const boostPodspecPath = path.join(
   __dirname,
   "..",
@@ -400,6 +407,7 @@ const rnMapboxDefaultAccessTokenOld = [
   "  ",
   "  public static var accessToken : String? {",
 ].join("\n");
+const rnMapboxConstantsAccessTokenLine = '      "AccessToken": RNMBXModule.defaultAccessToken() ?? "",';
 const rnMapboxDefaultAccessTokenNew = [
   "class RNMBXModule : NSObject {",
   "  static func defaultAccessToken() -> String? {",
@@ -432,7 +440,7 @@ const rnMapboxDefaultAccessTokenNew = [
 const rnMapboxConstantsAccessTokenOld = '      "MapboxV10":true,';
 const rnMapboxConstantsAccessTokenNew = [
   '      "MapboxV10":true,',
-  '      "AccessToken": RNMBXModule.defaultAccessToken() ?? "",',
+  rnMapboxConstantsAccessTokenLine,
 ].join("\n");
 
 if (!fs.existsSync(boostPodspecPath)) {
@@ -505,6 +513,7 @@ if (
     );
   const rnMapboxModuleNeedsPatch =
     currentRnMapboxModule.includes(rnMapboxDefaultAccessTokenOld) ||
+    /[ \t]*"AccessToken": RNMBXModule\.defaultAccessToken\(\) \?\? "",\r?\n(?:[ \t]*"AccessToken": RNMBXModule\.defaultAccessToken\(\) \?\? "",\r?\n)+/.test(currentRnMapboxModule) ||
     !currentRnMapboxModule.includes('"AccessToken": RNMBXModule.defaultAccessToken() ?? ""');
 
   if (
@@ -527,9 +536,17 @@ if (
       rnMapboxSetBaseOptionsOld,
       rnMapboxSetBaseOptionsNew
     );
-    const patchedRnMapboxModule = currentRnMapboxModule
-      .replace(rnMapboxDefaultAccessTokenOld, rnMapboxDefaultAccessTokenNew)
-      .replace(rnMapboxConstantsAccessTokenOld, rnMapboxConstantsAccessTokenNew);
+    let patchedRnMapboxModule = currentRnMapboxModule
+      .replace(rnMapboxDefaultAccessTokenOld, rnMapboxDefaultAccessTokenNew);
+
+    patchedRnMapboxModule = collapseRepeatedAccessTokenEntries(patchedRnMapboxModule);
+
+    if (!patchedRnMapboxModule.includes(rnMapboxConstantsAccessTokenLine)) {
+      patchedRnMapboxModule = patchedRnMapboxModule.replace(
+        rnMapboxConstantsAccessTokenOld,
+        rnMapboxConstantsAccessTokenNew
+      );
+    }
     const patchedRnMapboxChangeLineOffsetsAnimator = currentRnMapboxChangeLineOffsetsAnimator.replace(
       rnMapboxBuildLineStringOld,
       rnMapboxBuildLineStringNew

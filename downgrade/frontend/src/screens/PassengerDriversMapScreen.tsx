@@ -660,6 +660,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
               }}
               style={StyleSheet.absoluteFill}
               initialRegion={regionFromCenter(initialCenter, "close")}
+              showUserLocation
               rotateEnabled
               pitchEnabled={false}
               scrollEnabled

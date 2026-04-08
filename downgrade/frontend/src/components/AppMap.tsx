@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import MapboxGL from "@rnmapbox/maps";
 
 import { forceFallbackMapStyle, getCachedMapStyleMode, getFallbackMapStyleJSON, resolveMapStyleMode, type MapStyleMode } from "../config/mapbox";
@@ -51,6 +51,7 @@ type Props = {
   style?: any;
   initialRegion: Region;
   interactive?: boolean;
+  showUserLocation?: boolean;
   rotateEnabled?: boolean;
   pitchEnabled?: boolean;
   scrollEnabled?: boolean;
@@ -99,9 +100,11 @@ function toPosition(c: LatLng): [number, number] {
 export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const cameraRef = useRef<any>(null);
   const lastMarkerTapAtRef = useRef<number>(0);
+  const lastGestureLogAtRef = useRef<number>(0);
   const [styleMode, setStyleMode] = useState<MapStyleMode>(() => getCachedMapStyleMode());
 
   const interactive = props.interactive ?? true;
+  const showUserLocation = props.showUserLocation ?? false;
   const useFallbackStyle = styleMode === "fallback";
   const maxZoomLevel = useFallbackStyle ? FALLBACK_MAX_ZOOM : 22;
   const rotateEnabled = interactive ? (props.rotateEnabled ?? true) : false;
@@ -187,6 +190,10 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       const lat = Array.isArray(coords) ? coords[1] : null;
       if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) return;
 
+      if (__DEV__ && Platform.OS === "ios") {
+        console.warn("[AppMap] onPress", { latitude: lat, longitude: lng });
+      }
+
       props.onPress?.({ latitude: lat, longitude: lng });
     },
     [props]
@@ -211,6 +218,15 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
     (state: { gestures?: { isGestureActive?: boolean } } | undefined) => {
       if (!interactive) return;
       if (!state?.gestures?.isGestureActive) return;
+
+       if (__DEV__ && Platform.OS === "ios") {
+        const now = Date.now();
+        if (now - lastGestureLogAtRef.current > 1200) {
+          lastGestureLogAtRef.current = now;
+          console.warn("[AppMap] gesture active", state?.gestures ?? {});
+        }
+      }
+
       props.onUserGesture?.();
     },
     [interactive, props]
@@ -263,7 +279,18 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       gestureSettings={gestureSettings as any}
       onPress={onMapPress as any}
       onCameraChanged={onCameraChanged as any}
-      onDidFinishLoadingMap={() => props.onMapReady?.()}
+      onDidFinishLoadingMap={() => {
+        if (__DEV__ && Platform.OS === "ios") {
+          console.warn("[AppMap] map ready", {
+            interactive,
+            showUserLocation,
+            useFallbackStyle,
+            zoomEnabled,
+            scrollEnabled,
+          });
+        }
+        props.onMapReady?.();
+      }}
       onMapLoadingError={() => {
         if (useFallbackStyle) return;
         forceFallbackMapStyle();
@@ -272,6 +299,8 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       pointerEvents={interactive ? "auto" : "none"}
     >
       <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} maxZoomLevel={maxZoomLevel} />
+
+      {showUserLocation ? <MapboxGL.LocationPuck visible puckBearing="heading" puckBearingEnabled pulsing="default" /> : null}
 
       {(props.polygons || [])
         .filter((p) => p && p.id && p.geojson)

@@ -483,6 +483,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
           }}
           style={StyleSheet.absoluteFill}
           initialRegion={regionFromCenter(initialCenter)}
+          showUserLocation
           rotateEnabled={true}
           pitchEnabled={false}
           scrollEnabled

@@ -126,6 +126,7 @@ export function DriverMapScreen({ navigation }: Props) {
           }}
           style={StyleSheet.absoluteFill}
           initialRegion={regionFromCenter(fallbackCenter, true)}
+          showUserLocation
           rotateEnabled
           pitchEnabled={false}
           scrollEnabled

@@ -10,6 +10,8 @@ const PUBLIC_RUNTIME_KEYS = [
   "EXPO_PUBLIC_OSRM_BASE_URL",
 ];
 
+const RUNTIME_ENV_FILE_CANDIDATES = [".env", ".env.local", "env", "env.local"];
+
 function normalizeEnvValue(rawValue) {
   if (typeof rawValue !== "string") return "";
 
@@ -43,7 +45,7 @@ function parseEnvLine(line) {
 
 function loadLocalEnv(projectRoot) {
   const merged = {};
-  const files = [".env", ".env.local"];
+  const files = RUNTIME_ENV_FILE_CANDIDATES;
 
   for (const fileName of files) {
     const filePath = path.join(projectRoot, fileName);
@@ -108,6 +110,7 @@ if (require.main === module) {
 
 module.exports = {
   PUBLIC_RUNTIME_KEYS,
+  RUNTIME_ENV_FILE_CANDIDATES,
   normalizeEnvValue,
   parseEnvLine,
   loadLocalEnv,

@@ -39,7 +39,7 @@ function parseEnvLine(line) {
 
 function loadLocalEnv(projectRoot) {
   const merged = {};
-  const files = [".env", ".env.local"];
+  const files = [".env", ".env.local", "env", "env.local"];
 
   for (const fileName of files) {
     const filePath = path.join(projectRoot, fileName);

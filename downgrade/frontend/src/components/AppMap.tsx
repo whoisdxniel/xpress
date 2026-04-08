@@ -104,6 +104,10 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const interactive = props.interactive ?? true;
   const useFallbackStyle = styleMode === "fallback";
   const maxZoomLevel = useFallbackStyle ? FALLBACK_MAX_ZOOM : 22;
+  const rotateEnabled = interactive ? (props.rotateEnabled ?? true) : false;
+  const pitchEnabled = interactive ? (props.pitchEnabled ?? false) : false;
+  const scrollEnabled = interactive ? (props.scrollEnabled ?? true) : false;
+  const zoomEnabled = interactive ? (props.zoomEnabled ?? true) : false;
 
   useEffect(() => {
     let alive = true;
@@ -188,6 +192,30 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
     [props]
   );
 
+  const gestureSettings = useMemo(
+    () => ({
+      panEnabled: scrollEnabled,
+      pinchPanEnabled: scrollEnabled,
+      pinchZoomEnabled: zoomEnabled,
+      doubleTapToZoomInEnabled: zoomEnabled,
+      doubleTouchToZoomOutEnabled: zoomEnabled,
+      quickZoomEnabled: zoomEnabled,
+      rotateEnabled,
+      pitchEnabled,
+      simultaneousRotateAndPinchZoomEnabled: rotateEnabled && zoomEnabled,
+    }),
+    [pitchEnabled, rotateEnabled, scrollEnabled, zoomEnabled]
+  );
+
+  const onCameraChanged = useCallback(
+    (state: { gestures?: { isGestureActive?: boolean } } | undefined) => {
+      if (!interactive) return;
+      if (!state?.gestures?.isGestureActive) return;
+      props.onUserGesture?.();
+    },
+    [interactive, props]
+  );
+
   const lineShape = useMemo(() => {
     const poly = props.polyline;
     if (!poly?.coordinates?.length) return null;
@@ -228,11 +256,13 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       style={[StyleSheet.absoluteFill, props.style]}
       styleURL={useFallbackStyle ? undefined : MapboxGL.StyleURL.Street}
       styleJSON={useFallbackStyle ? getFallbackMapStyleJSON() : undefined}
-      rotateEnabled={interactive ? (props.rotateEnabled ?? true) : false}
-      pitchEnabled={interactive ? (props.pitchEnabled ?? false) : false}
-      scrollEnabled={interactive ? (props.scrollEnabled ?? true) : false}
-      zoomEnabled={interactive ? (props.zoomEnabled ?? true) : false}
+      rotateEnabled={rotateEnabled}
+      pitchEnabled={pitchEnabled}
+      scrollEnabled={scrollEnabled}
+      zoomEnabled={zoomEnabled}
+      gestureSettings={gestureSettings as any}
       onPress={onMapPress as any}
+      onCameraChanged={onCameraChanged as any}
       onDidFinishLoadingMap={() => props.onMapReady?.()}
       onMapLoadingError={() => {
         if (useFallbackStyle) return;
@@ -240,14 +270,6 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
         setStyleMode("fallback");
       }}
       pointerEvents={interactive ? "auto" : "none"}
-      onTouchStart={() => {
-        if (!interactive) return;
-        props.onUserGesture?.();
-      }}
-      onTouchMove={() => {
-        if (!interactive) return;
-        props.onUserGesture?.();
-      }}
     >
       <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} maxZoomLevel={maxZoomLevel} />
 

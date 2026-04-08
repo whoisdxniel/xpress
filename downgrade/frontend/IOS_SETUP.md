@@ -123,6 +123,23 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 9. Si compila en dispositivo, usar Xcode para Archive y exportar el IPA.
 10. Si cambias `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` u otro `EXPO_PUBLIC_*`, reinicia Metro y vuelve a compilar la app para que `process.env` y `expo.extra` queden sincronizados.
 
+## Rebuild limpio recomendado al bajar cambios del repo
+
+Si traes cambios nuevos de esta copia downgrade y quieres regenerar todo limpio antes de correr desde Xcode, usa este orden:
+
+1. `cd downgrade/frontend`
+2. `npm install`
+3. `export RUBYOPT=-rlogger`
+4. `npx expo prebuild --clean --platform ios`
+5. `cd ios && pod install`
+6. cerrar Xcode si estaba abierto
+7. borrar la app del simulador
+8. en Xcode: `Product > Clean Build Folder`
+9. abrir `ios/*.xcworkspace`
+10. correr la app desde Xcode como siempre
+
+Si necesitas levantar Metro a mano antes o durante esa corrida nativa, usa `npm run start:dev-client:clear` en lugar de `npx expo start -c` para no abrir Expo Go.
+
 ## Notas importantes
 
 - Para iOS downgrade, no uses `frontend/`; usa siempre `downgrade/frontend/`.
@@ -135,6 +152,7 @@ Si `ffi 1.17.2` no entra como binaria o RubyGems vuelve a intentar compilarla, u
 - Esta copia tambien parchea RNMapbox iOS en `RNMBXMapView.swift` y `RNMBXNativeUserLocation.swift`, porque la rama actual de `@rnmapbox/maps 10.2.10` todavia trae codigo pensado para Swift mas nuevo y para `PuckBearing` de Mapbox 11, mientras que esta copia downgrade fija Mapbox iOS `10.13.1`.
 - Esta copia tambien parchea RNMapbox iOS en `RNMBXLayer.swift` y `RNMBXChangeLineOffsetsShapeAnimatorModule.swift` para evitar dos errores tipicos de Xcode 13: `Protocol 'Layer' as a type cannot conform to the protocol itself` y `Unable to infer complex closure return type`.
 - Si bajas cambios que toquen `rnmapbox.app.plugin.js` o el `postinstall` iOS, no alcanza con repetir `pod install` sobre una carpeta `ios/` vieja: vuelve a correr `npx expo prebuild --clean --platform ios` para regenerar Podfile, flags y settings nativos antes de abrir Xcode.
+- Para esta copia con RNMapbox nativo, no uses Expo Go para probar iOS. Si levantas Metro manualmente, usa `npm run start:dev-client` o `npm run start:dev-client:clear`; si corres desde Xcode y se abre la terminal de Expo, ese sigue siendo el flujo correcto.
 - `npm install`, `npm start` y `expo run:ios` ahora sincronizan `src/config/runtimeBuildEnv.ts` desde `.env`/`.env.local` para que Expo 48 bare no dependa de `process.env` al construir el bundle JS del downgrade. Ese archivo queda local con valores publicos; no lo subas al repo con tokens reales.
 - Esta copia carga un polyfill local de `URLSearchParams` desde el entrypoint para cubrir el runtime JS viejo de Expo 48 / RN 0.71 en iOS y evitar fallos como `URLSearchParams.set is not implemented`.
 - Si el token runtime de Mapbox responde `401/403`, el wrapper `AppMap` cae automaticamente a un estilo raster abierto para que el simulador y las pantallas sigan funcionando mientras corriges el token publico; el routing ya intenta Mapbox primero y luego OSRM.

@@ -12,6 +12,7 @@
     "preios": "node scripts/sync-runtime-public-env.js",
     "preweb": "node scripts/sync-runtime-public-env.js",
     "postinstall": "node scripts/postinstall.js",
+    "diagnostics:mapbox": "node scripts/check-mapbox-bootstrap.js",
     "android:setup-sdk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\setup-android-sdk.ps1",
     "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-debug.ps1",
     "android:apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-release.ps1",

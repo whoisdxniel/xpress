@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const appJson = require("./app.json");
+const { syncRuntimeBuildEnvFile } = require("./scripts/sync-runtime-public-env");
 
 function normalizeEnvValue(rawValue) {
   if (typeof rawValue !== "string") return "";
@@ -59,6 +60,7 @@ function loadLocalEnv(projectRoot) {
 }
 
 loadLocalEnv(__dirname);
+syncRuntimeBuildEnvFile(__dirname);
 
 function readEnvValue(...keys) {
   for (const key of keys) {

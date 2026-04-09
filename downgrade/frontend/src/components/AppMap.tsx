@@ -206,39 +206,6 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
     [props]
   );
 
-  const gestureSettings = useMemo(
-    () => ({
-      panEnabled: scrollEnabled,
-      pinchPanEnabled: scrollEnabled,
-      pinchZoomEnabled: zoomEnabled,
-      doubleTapToZoomInEnabled: zoomEnabled,
-      doubleTouchToZoomOutEnabled: zoomEnabled,
-      quickZoomEnabled: zoomEnabled,
-      rotateEnabled,
-      pitchEnabled,
-      simultaneousRotateAndPinchZoomEnabled: rotateEnabled && zoomEnabled,
-    }),
-    [pitchEnabled, rotateEnabled, scrollEnabled, zoomEnabled]
-  );
-
-  const onCameraChanged = useCallback(
-    (state: { gestures?: { isGestureActive?: boolean } } | undefined) => {
-      if (!interactive) return;
-      if (!state?.gestures?.isGestureActive) return;
-
-       if (__DEV__ && Platform.OS === "ios") {
-        const now = Date.now();
-        if (now - lastGestureLogAtRef.current > 1200) {
-          lastGestureLogAtRef.current = now;
-          console.warn("[AppMap] gesture active", state?.gestures ?? {});
-        }
-      }
-
-      props.onUserGesture?.();
-    },
-    [interactive, props]
-  );
-
   const lineShape = useMemo(() => {
     const poly = props.polyline;
     if (!poly?.coordinates?.length) return null;
@@ -354,10 +321,8 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       pitchEnabled={pitchEnabled}
       scrollEnabled={scrollEnabled}
       zoomEnabled={zoomEnabled}
-      gestureSettings={gestureSettings as any}
       onPress={(feature: any) => onMapPress(feature, "onPress") as any}
       onLongPress={(feature: any) => onMapPress(feature, "onLongPress") as any}
-      onCameraChanged={onCameraChanged as any}
       onMapIdle={onMapIdle as any}
       onDidFinishLoadingMap={() => {
         if (__DEV__ && Platform.OS === "ios") {
@@ -376,9 +341,25 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
         forceFallbackMapStyle();
         setStyleMode("fallback");
       }}
-      pointerEvents={interactive ? "auto" : "none"}
     >
       <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} maxZoomLevel={maxZoomLevel} />
+
+      {interactive && props.onUserGesture ? (
+        <MapboxGL.CameraGestureObserver
+          quietPeriodMs={180}
+          maxIntervalMs={4000}
+          onMapSteady={(event: any) => {
+            props.onUserGesture?.();
+            if (__DEV__ && Platform.OS === "ios") {
+              const now = Date.now();
+              if (now - lastGestureLogAtRef.current > 1200) {
+                lastGestureLogAtRef.current = now;
+                console.warn("[AppMap] gesture steady", event?.nativeEvent ?? {});
+              }
+            }
+          }}
+        />
+      ) : null}
 
       {showUserLocation ? <MapboxGL.LocationPuck visible puckBearing="heading" puckBearingEnabled pulsing="default" /> : null}
 

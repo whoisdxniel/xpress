@@ -57,6 +57,7 @@ type Props = {
   scrollEnabled?: boolean;
   zoomEnabled?: boolean;
   onPress?: (coordinate: LatLng) => void;
+  onMapIdle?: (center: LatLng) => void;
   onUserGesture?: () => void;
   onMapReady?: () => void;
   markers?: AppMapMarker[];
@@ -95,6 +96,14 @@ function zoomFromRegion(r: Region): number {
 
 function toPosition(c: LatLng): [number, number] {
   return [c.longitude, c.latitude];
+}
+
+function getCoordinateFromFeature(feature: any): LatLng | null {
+  const coords = feature?.geometry?.coordinates;
+  const lng = Array.isArray(coords) ? coords[0] : null;
+  const lat = Array.isArray(coords) ? coords[1] : null;
+  if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) return null;
+  return { latitude: lat, longitude: lng };
 }
 
 export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
@@ -181,20 +190,18 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   useImperativeHandle(ref, () => ({ fitToCoordinates, animateToRegion }), [fitToCoordinates, animateToRegion]);
 
   const onMapPress = useCallback(
-    (feature: any) => {
+    (feature: any, eventName: "onPress" | "onLongPress" = "onPress") => {
       const now = Date.now();
       if (now - lastMarkerTapAtRef.current < 250) return;
 
-      const coords = feature?.geometry?.coordinates;
-      const lng = Array.isArray(coords) ? coords[0] : null;
-      const lat = Array.isArray(coords) ? coords[1] : null;
-      if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) return;
+      const coordinate = getCoordinateFromFeature(feature);
+      if (!coordinate) return;
 
       if (__DEV__ && Platform.OS === "ios") {
-        console.warn("[AppMap] onPress", { latitude: lat, longitude: lng });
+        console.warn(`[AppMap] ${eventName}`, coordinate);
       }
 
-      props.onPress?.({ latitude: lat, longitude: lng });
+      props.onPress?.(coordinate);
     },
     [props]
   );
@@ -262,10 +269,81 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
           coordinate: [m.coordinate.longitude, m.coordinate.latitude] as [number, number],
           onPress: m.onPress,
           title: m.title,
+          pinColor,
+          hasCustomChild: !!m.children,
           child,
         };
       });
   }, [props.markers]);
+
+  const customMarkerItems = useMemo(() => markerItems.filter((m) => m.hasCustomChild), [markerItems]);
+
+  const pressableSimpleMarkers = useMemo(() => markerItems.filter((m) => !m.hasCustomChild && !!m.onPress), [markerItems]);
+
+  const passiveSimpleMarkers = useMemo(() => markerItems.filter((m) => !m.hasCustomChild && !m.onPress), [markerItems]);
+
+  const pressableSimpleMarkerMap = useMemo(() => new Map(pressableSimpleMarkers.map((m) => [m.id, m])), [pressableSimpleMarkers]);
+
+  const toMarkerFeatureCollection = useCallback((items: typeof markerItems) => {
+    return {
+      type: "FeatureCollection" as const,
+      features: items.map((m) => ({
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: m.coordinate,
+        },
+        properties: {
+          markerId: m.id,
+          pinColor: m.pinColor,
+        },
+      })),
+    };
+  }, []);
+
+  const pressableSimpleMarkerShape = useMemo(() => {
+    if (!pressableSimpleMarkers.length) return null;
+    return toMarkerFeatureCollection(pressableSimpleMarkers);
+  }, [pressableSimpleMarkers, toMarkerFeatureCollection]);
+
+  const passiveSimpleMarkerShape = useMemo(() => {
+    if (!passiveSimpleMarkers.length) return null;
+    return toMarkerFeatureCollection(passiveSimpleMarkers);
+  }, [passiveSimpleMarkers, toMarkerFeatureCollection]);
+
+  const onSimpleMarkerPress = useCallback(
+    (event: any) => {
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const markerId = feature?.properties?.markerId;
+      if (!markerId) return;
+
+      lastMarkerTapAtRef.current = Date.now();
+      pressableSimpleMarkerMap.get(String(markerId))?.onPress?.();
+    },
+    [pressableSimpleMarkerMap]
+  );
+
+  const simpleMarkerLayerStyle = useMemo(
+    () => ({
+      circleColor: colors.card,
+      circleStrokeWidth: 3,
+      circleStrokeColor: ["coalesce", ["to-color", ["get", "pinColor"]], colors.gold],
+      circleRadius: 8,
+      circleOpacity: 1,
+    }),
+    []
+  );
+
+  const onMapIdle = useCallback(
+    (state: { properties?: { center?: [number, number] } } | undefined) => {
+      const center = state?.properties?.center;
+      const lng = Array.isArray(center) ? center[0] : null;
+      const lat = Array.isArray(center) ? center[1] : null;
+      if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) return;
+      props.onMapIdle?.({ latitude: lat, longitude: lng });
+    },
+    [props]
+  );
 
   return (
     <MapboxGL.MapView
@@ -277,8 +355,10 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       scrollEnabled={scrollEnabled}
       zoomEnabled={zoomEnabled}
       gestureSettings={gestureSettings as any}
-      onPress={onMapPress as any}
+      onPress={(feature: any) => onMapPress(feature, "onPress") as any}
+      onLongPress={(feature: any) => onMapPress(feature, "onLongPress") as any}
       onCameraChanged={onCameraChanged as any}
+      onMapIdle={onMapIdle as any}
       onDidFinishLoadingMap={() => {
         if (__DEV__ && Platform.OS === "ios") {
           console.warn("[AppMap] map ready", {
@@ -350,7 +430,19 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
         </MapboxGL.ShapeSource>
       ) : null}
 
-      {markerItems.map((m) => (
+      {passiveSimpleMarkerShape ? (
+        <MapboxGL.ShapeSource id="markers-passive" shape={passiveSimpleMarkerShape as any}>
+          <MapboxGL.CircleLayer id="markers-passive-circle" style={simpleMarkerLayerStyle as any} />
+        </MapboxGL.ShapeSource>
+      ) : null}
+
+      {pressableSimpleMarkerShape ? (
+        <MapboxGL.ShapeSource id="markers-pressable" shape={pressableSimpleMarkerShape as any} onPress={onSimpleMarkerPress as any} hitbox={{ width: 32, height: 32 }}>
+          <MapboxGL.CircleLayer id="markers-pressable-circle" style={simpleMarkerLayerStyle as any} />
+        </MapboxGL.ShapeSource>
+      ) : null}
+
+      {customMarkerItems.map((m) => (
         <MapboxGL.PointAnnotation
           key={m.id}
           id={m.id}

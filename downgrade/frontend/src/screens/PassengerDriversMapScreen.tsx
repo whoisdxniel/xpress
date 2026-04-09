@@ -87,6 +87,11 @@ function routeRequestKey(from?: MapPoint | null, to?: MapPoint | null) {
   return `${r(from.lat)},${r(from.lng)}->${r(to.lat)},${r(to.lng)}`;
 }
 
+function sameMapPoint(a?: MapPoint | null, b?: MapPoint | null) {
+  if (!a || !b) return false;
+  return Math.abs(a.lat - b.lat) < 0.00002 && Math.abs(a.lng - b.lng) < 0.00002;
+}
+
 const ROUTE_PAYLOAD_MAX_POINTS = 450;
 
 export function PassengerDriversMapScreen({ navigation }: Props) {
@@ -187,6 +192,17 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     shouldRecenterRef.current = true;
     hasAutoCenteredRef.current = false;
     void refreshLocation({ showError: true, animate: true });
+  }
+
+  function applyDropoffSelection(next: MapPoint) {
+    if (sameMapPoint(dropoff, next)) return;
+    setDropoff(next);
+    setDropoffAddress(null);
+    setRoutePreview(null);
+    setRoutePreviewKey(null);
+    setEstimate(null);
+    setEstimateKey(null);
+    setError(null);
   }
 
   async function refreshLocation(opts?: { showError?: boolean; animate?: boolean }) {
@@ -497,7 +513,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
 
   async function estimateApprox() {
     if (!dropoff) {
-      setError("Tocá el mapa para elegir el destino");
+      setError("Tocá el mapa o movelo para elegir el destino");
       return;
     }
     if (estimateInFlightRef.current) return;
@@ -514,7 +530,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
     if (!token || !center) return;
     if (requestingRef.current) return;
     if (!dropoff) {
-      setError("Tocá el mapa para elegir el destino");
+      setError("Tocá el mapa o movelo para elegir el destino");
       return;
     }
     if (!estimate || estimateKey !== currentRouteKey) {
@@ -630,13 +646,6 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
               id: "dropoff",
               coordinate: toLatLng(dropoff),
               pinColor: colors.gold,
-              children: (
-                <View style={styles.destMarkerWrap}>
-                  <View style={styles.destMarkerInner}>
-                    <Ionicons name="navigate" size={18} color={colors.bg} />
-                  </View>
-                </View>
-              ),
             });
           }
 
@@ -654,53 +663,60 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
           }
 
           return (
-            <AppMap
-              ref={(r) => {
-                mapRef.current = r;
-              }}
-              style={StyleSheet.absoluteFill}
-              initialRegion={regionFromCenter(initialCenter, "close")}
-              showUserLocation
-              rotateEnabled
-              pitchEnabled={false}
-              scrollEnabled
-              zoomEnabled
-              polygons={polygons}
-              onMapReady={() => {
-                mapReadyRef.current = true;
-                const canAutoCenter = !userInteractedRef.current || shouldRecenterRef.current || !hasAutoCenteredRef.current;
-                if (!canAutoCenter) return;
-                mapRef.current?.animateToRegion(regionFromCenter(initialCenter, "close"), 0);
-                hasAutoCenteredRef.current = true;
-                shouldRecenterRef.current = false;
-              }}
-              onUserGesture={() => {
-                userInteractedRef.current = true;
-              }}
-              onPress={(c) => {
-                setDropoff({ lat: c.latitude, lng: c.longitude });
-                setDropoffAddress(null);
-                setRoutePreview(null);
-                setRoutePreviewKey(null);
-                setEstimate(null);
-                setEstimateKey(null);
-                setError(null);
-              }}
-              polyline={polyline}
-              markers={markers}
-            />
+            <>
+              <AppMap
+                ref={(r) => {
+                  mapRef.current = r;
+                }}
+                style={StyleSheet.absoluteFill}
+                initialRegion={regionFromCenter(initialCenter, "close")}
+                showUserLocation
+                rotateEnabled
+                pitchEnabled={false}
+                scrollEnabled
+                zoomEnabled
+                polygons={polygons}
+                onMapReady={() => {
+                  mapReadyRef.current = true;
+                  const canAutoCenter = !userInteractedRef.current || shouldRecenterRef.current || !hasAutoCenteredRef.current;
+                  if (!canAutoCenter) return;
+                  mapRef.current?.animateToRegion(regionFromCenter(initialCenter, "close"), 0);
+                  hasAutoCenteredRef.current = true;
+                  shouldRecenterRef.current = false;
+                }}
+                onUserGesture={() => {
+                  userInteractedRef.current = true;
+                }}
+                onMapIdle={(c) => {
+                  if (!userInteractedRef.current) return;
+                  applyDropoffSelection({ lat: c.latitude, lng: c.longitude });
+                }}
+                onPress={(c) => {
+                  applyDropoffSelection({ lat: c.latitude, lng: c.longitude });
+                }}
+                polyline={polyline}
+                markers={markers}
+              />
+
+              <View pointerEvents="none" style={styles.centerPicker}>
+                <View style={styles.centerPickerRing}>
+                  <View style={styles.centerPickerDot} />
+                </View>
+                <View style={styles.centerPickerStem} />
+              </View>
+            </>
           );
         })()}
 
         {loadingLocation || (loadingDrivers && !driversLoadedRef.current) ? (
-          <View style={styles.loadingOverlay}>
+          <View pointerEvents="none" style={styles.loadingOverlay}>
             <ActivityIndicator color={colors.gold} />
             <Text style={styles.loadingText}>{loadingLocation ? "Obteniendo ubicación..." : "Buscando ejecutivos..."}</Text>
           </View>
         ) : null}
 
         {!!error ? (
-          <View style={styles.errorOverlay}>
+          <View pointerEvents="none" style={styles.errorOverlay}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
@@ -730,7 +746,7 @@ export function PassengerDriversMapScreen({ navigation }: Props) {
                 </View>
               </View>
             ) : (
-              <Text style={styles.estimateHint}>Tocá el mapa para elegir destino y luego presioná Calcular aproximado.</Text>
+              <Text style={styles.estimateHint}>Tocá el mapa o movelo hasta dejar el destino en el marcador central y luego presioná Calcular aproximado.</Text>
             )}
 
             {estimate?.isFixedPrice ? <Text style={styles.estimateSmallLine}>Tarifa fija por zona</Text> : null}
@@ -898,6 +914,41 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.mutedText,
     fontWeight: "700",
+  },
+  centerPicker: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    marginLeft: -14,
+    marginTop: -28,
+    alignItems: "center",
+  },
+  centerPickerRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  centerPickerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.gold,
+  },
+  centerPickerStem: {
+    width: 2,
+    height: 16,
+    marginTop: 2,
+    borderRadius: 1,
+    backgroundColor: colors.gold,
   },
   destMarkerWrap: {
     alignItems: "center",

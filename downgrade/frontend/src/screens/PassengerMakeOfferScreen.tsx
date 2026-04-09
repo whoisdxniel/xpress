@@ -56,6 +56,11 @@ function routeRequestKey(from?: MapPoint | null, to?: MapPoint | null) {
   return `${r(from.lat)},${r(from.lng)}->${r(to.lat)},${r(to.lng)}`;
 }
 
+function sameMapPoint(a?: MapPoint | null, b?: MapPoint | null) {
+  if (!a || !b) return false;
+  return Math.abs(a.lat - b.lat) < 0.00002 && Math.abs(a.lng - b.lng) < 0.00002;
+}
+
 const ROUTE_PAYLOAD_MAX_POINTS = 450;
 
 export function PassengerMakeOfferScreen({ navigation }: Props) {
@@ -212,6 +217,12 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
     shouldRecenterRef.current = true;
     hasAutoCenteredRef.current = false;
     void refreshPickup({ showError: true, animate: true });
+  }
+
+  function applyDropoffSelection(next: MapPoint) {
+    if (sameMapPoint(dropoff, next)) return;
+    setDropoff(next);
+    setError(null);
   }
 
   useEffect(() => {
@@ -500,9 +511,12 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
           onUserGesture={() => {
             userInteractedRef.current = true;
           }}
+          onMapIdle={(c) => {
+            if (!userInteractedRef.current) return;
+            applyDropoffSelection({ lat: c.latitude, lng: c.longitude });
+          }}
           onPress={(c) => {
-            setDropoff({ lat: c.latitude, lng: c.longitude });
-            setError(null);
+            applyDropoffSelection({ lat: c.latitude, lng: c.longitude });
           }}
           onMapReady={() => {
             if (fitCoords) {
@@ -522,15 +536,22 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
           markers={markers}
         />
 
+        <View pointerEvents="none" style={styles.centerPicker}>
+          <View style={styles.centerPickerRing}>
+            <View style={styles.centerPickerDot} />
+          </View>
+          <View style={styles.centerPickerStem} />
+        </View>
+
         {loading ? (
-          <View style={styles.loadingOverlay}>
+          <View pointerEvents="none" style={styles.loadingOverlay}>
             <ActivityIndicator color={colors.gold} />
             <Text style={styles.loadingText}>Obteniendo tu ubicación...</Text>
           </View>
         ) : null}
 
         {!!error ? (
-          <View style={styles.errorOverlay}>
+          <View pointerEvents="none" style={styles.errorOverlay}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
@@ -539,7 +560,7 @@ export function PassengerMakeOfferScreen({ navigation }: Props) {
       <View style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
           <Card style={{ gap: 10 }}>
-            <Text style={styles.hint}>Tocá el mapa para elegir el destino.</Text>
+            <Text style={styles.hint}>Tocá el mapa o movelo hasta dejar el destino en el marcador central.</Text>
 
             <View style={styles.pillRow}>
               {(["CARRO", "MOTO", "MOTO_CARGA", "CARRO_CARGA"] as const).map((t) => {
@@ -705,6 +726,41 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.mutedText,
     fontWeight: "700",
+  },
+  centerPicker: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    marginLeft: -14,
+    marginTop: -28,
+    alignItems: "center",
+  },
+  centerPickerRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  centerPickerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.gold,
+  },
+  centerPickerStem: {
+    width: 2,
+    height: 16,
+    marginTop: 2,
+    borderRadius: 1,
+    backgroundColor: colors.gold,
   },
   errorOverlay: {
     position: "absolute",

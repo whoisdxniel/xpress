@@ -110,6 +110,7 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   const cameraRef = useRef<any>(null);
   const lastMarkerTapAtRef = useRef<number>(0);
   const lastGestureLogAtRef = useRef<number>(0);
+  const lastTouchLogAtRef = useRef<number>(0);
   const [styleMode, setStyleMode] = useState<MapStyleMode>(() => getCachedMapStyleMode());
 
   const interactive = props.interactive ?? true;
@@ -307,137 +308,145 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
       const lng = Array.isArray(center) ? center[0] : null;
       const lat = Array.isArray(center) ? center[1] : null;
       if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) return;
+
+      if (__DEV__ && Platform.OS === "ios") {
+        const now = Date.now();
+        if (now - lastGestureLogAtRef.current > 1200) {
+          lastGestureLogAtRef.current = now;
+          console.warn("[AppMap] map idle", { latitude: lat, longitude: lng });
+        }
+      }
+
       props.onMapIdle?.({ latitude: lat, longitude: lng });
     },
     [props]
   );
 
+  const onWrapperTouchMove = useCallback(() => {
+    if (!interactive) return;
+
+    props.onUserGesture?.();
+
+    if (__DEV__ && Platform.OS === "ios") {
+      const now = Date.now();
+      if (now - lastTouchLogAtRef.current > 1200) {
+        lastTouchLogAtRef.current = now;
+        console.warn("[AppMap] wrapper touch move");
+      }
+    }
+  }, [interactive, props]);
+
   return (
-    <MapboxGL.MapView
-      style={[StyleSheet.absoluteFill, props.style]}
-      styleURL={useFallbackStyle ? undefined : MapboxGL.StyleURL.Street}
-      styleJSON={useFallbackStyle ? getFallbackMapStyleJSON() : undefined}
-      rotateEnabled={rotateEnabled}
-      pitchEnabled={pitchEnabled}
-      scrollEnabled={scrollEnabled}
-      zoomEnabled={zoomEnabled}
-      onPress={(feature: any) => onMapPress(feature, "onPress") as any}
-      onLongPress={(feature: any) => onMapPress(feature, "onLongPress") as any}
-      onMapIdle={onMapIdle as any}
-      onDidFinishLoadingMap={() => {
-        if (__DEV__ && Platform.OS === "ios") {
-          console.warn("[AppMap] map ready", {
-            interactive,
-            showUserLocation,
-            useFallbackStyle,
-            zoomEnabled,
-            scrollEnabled,
-          });
-        }
-        props.onMapReady?.();
-      }}
-      onMapLoadingError={() => {
-        if (useFallbackStyle) return;
-        forceFallbackMapStyle();
-        setStyleMode("fallback");
-      }}
-    >
-      <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} maxZoomLevel={maxZoomLevel} />
+    <View style={props.style} pointerEvents={interactive ? "auto" : "none"} onTouchMove={onWrapperTouchMove}>
+      <MapboxGL.MapView
+        style={StyleSheet.absoluteFill}
+        styleURL={useFallbackStyle ? undefined : MapboxGL.StyleURL.Street}
+        styleJSON={useFallbackStyle ? getFallbackMapStyleJSON() : undefined}
+        rotateEnabled={rotateEnabled}
+        pitchEnabled={pitchEnabled}
+        scrollEnabled={scrollEnabled}
+        zoomEnabled={zoomEnabled}
+        onPress={(feature: any) => onMapPress(feature, "onPress") as any}
+        onLongPress={(feature: any) => onMapPress(feature, "onLongPress") as any}
+        onMapIdle={onMapIdle as any}
+        onDidFinishLoadingMap={() => {
+          if (__DEV__ && Platform.OS === "ios") {
+            console.warn("[AppMap] map ready", {
+              interactive,
+              showUserLocation,
+              useFallbackStyle,
+              zoomEnabled,
+              scrollEnabled,
+            });
+          }
+          props.onMapReady?.();
+        }}
+        onMapLoadingError={() => {
+          if (useFallbackStyle) return;
+          forceFallbackMapStyle();
+          setStyleMode("fallback");
+        }}
+      >
+        <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} maxZoomLevel={maxZoomLevel} />
 
-      {interactive && props.onUserGesture ? (
-        <MapboxGL.CameraGestureObserver
-          quietPeriodMs={180}
-          maxIntervalMs={4000}
-          onMapSteady={(event: any) => {
-            props.onUserGesture?.();
-            if (__DEV__ && Platform.OS === "ios") {
-              const now = Date.now();
-              if (now - lastGestureLogAtRef.current > 1200) {
-                lastGestureLogAtRef.current = now;
-                console.warn("[AppMap] gesture steady", event?.nativeEvent ?? {});
-              }
-            }
-          }}
-        />
-      ) : null}
+        {showUserLocation ? <MapboxGL.LocationPuck visible puckBearing="heading" puckBearingEnabled pulsing="default" /> : null}
 
-      {showUserLocation ? <MapboxGL.LocationPuck visible puckBearing="heading" puckBearingEnabled pulsing="default" /> : null}
+        {(props.polygons || [])
+          .filter((p) => p && p.id && p.geojson)
+          .map((p) => {
+            const feature = normalizeGeoJsonToFeature(p.geojson);
+            if (!feature) return null;
 
-      {(props.polygons || [])
-        .filter((p) => p && p.id && p.geojson)
-        .map((p) => {
-          const feature = normalizeGeoJsonToFeature(p.geojson);
-          if (!feature) return null;
+            const id = String(p.id);
+            const fillColor = p.fillColor ?? colors.gold;
+            const lineColor = p.lineColor ?? colors.gold;
+            const fillOpacity = typeof p.fillOpacity === "number" ? p.fillOpacity : 0.12;
+            const lineOpacity = typeof p.lineOpacity === "number" ? p.lineOpacity : 0.5;
+            const lineWidth = typeof p.lineWidth === "number" ? p.lineWidth : 2;
 
-          const id = String(p.id);
-          const fillColor = p.fillColor ?? colors.gold;
-          const lineColor = p.lineColor ?? colors.gold;
-          const fillOpacity = typeof p.fillOpacity === "number" ? p.fillOpacity : 0.12;
-          const lineOpacity = typeof p.lineOpacity === "number" ? p.lineOpacity : 0.5;
-          const lineWidth = typeof p.lineWidth === "number" ? p.lineWidth : 2;
+            return (
+              <MapboxGL.ShapeSource key={id} id={`poly-${id}`} shape={feature as any}>
+                <MapboxGL.FillLayer
+                  id={`poly-${id}-fill`}
+                  style={{
+                    fillColor,
+                    fillOpacity,
+                  }}
+                />
+                <MapboxGL.LineLayer
+                  id={`poly-${id}-line`}
+                  style={{
+                    lineColor,
+                    lineOpacity,
+                    lineWidth,
+                  }}
+                />
+              </MapboxGL.ShapeSource>
+            );
+          })}
 
-          return (
-            <MapboxGL.ShapeSource key={id} id={`poly-${id}`} shape={feature as any}>
-              <MapboxGL.FillLayer
-                id={`poly-${id}-fill`}
-                style={{
-                  fillColor,
-                  fillOpacity,
-                }}
-              />
-              <MapboxGL.LineLayer
-                id={`poly-${id}-line`}
-                style={{
-                  lineColor,
-                  lineOpacity,
-                  lineWidth,
-                }}
-              />
-            </MapboxGL.ShapeSource>
-          );
-        })}
+        {lineShape ? (
+          <MapboxGL.ShapeSource id={props.polyline?.id ?? "route"} shape={lineShape as any}>
+            <MapboxGL.LineLayer
+              id={(props.polyline?.id ?? "route") + "-line"}
+              style={{
+                lineColor: props.polyline?.strokeColor ?? colors.gold,
+                lineWidth: props.polyline?.strokeWidth ?? 4,
+                lineJoin: "round",
+                lineCap: "round",
+              }}
+            />
+          </MapboxGL.ShapeSource>
+        ) : null}
 
-      {lineShape ? (
-        <MapboxGL.ShapeSource id={props.polyline?.id ?? "route"} shape={lineShape as any}>
-          <MapboxGL.LineLayer
-            id={(props.polyline?.id ?? "route") + "-line"}
-            style={{
-              lineColor: props.polyline?.strokeColor ?? colors.gold,
-              lineWidth: props.polyline?.strokeWidth ?? 4,
-              lineJoin: "round",
-              lineCap: "round",
+        {passiveSimpleMarkerShape ? (
+          <MapboxGL.ShapeSource id="markers-passive" shape={passiveSimpleMarkerShape as any}>
+            <MapboxGL.CircleLayer id="markers-passive-circle" style={simpleMarkerLayerStyle as any} />
+          </MapboxGL.ShapeSource>
+        ) : null}
+
+        {pressableSimpleMarkerShape ? (
+          <MapboxGL.ShapeSource id="markers-pressable" shape={pressableSimpleMarkerShape as any} onPress={onSimpleMarkerPress as any} hitbox={{ width: 32, height: 32 }}>
+            <MapboxGL.CircleLayer id="markers-pressable-circle" style={simpleMarkerLayerStyle as any} />
+          </MapboxGL.ShapeSource>
+        ) : null}
+
+        {customMarkerItems.map((m) => (
+          <MapboxGL.PointAnnotation
+            key={m.id}
+            id={m.id}
+            coordinate={m.coordinate}
+            title={m.title}
+            onSelected={() => {
+              lastMarkerTapAtRef.current = Date.now();
+              m.onPress?.();
             }}
-          />
-        </MapboxGL.ShapeSource>
-      ) : null}
-
-      {passiveSimpleMarkerShape ? (
-        <MapboxGL.ShapeSource id="markers-passive" shape={passiveSimpleMarkerShape as any}>
-          <MapboxGL.CircleLayer id="markers-passive-circle" style={simpleMarkerLayerStyle as any} />
-        </MapboxGL.ShapeSource>
-      ) : null}
-
-      {pressableSimpleMarkerShape ? (
-        <MapboxGL.ShapeSource id="markers-pressable" shape={pressableSimpleMarkerShape as any} onPress={onSimpleMarkerPress as any} hitbox={{ width: 32, height: 32 }}>
-          <MapboxGL.CircleLayer id="markers-pressable-circle" style={simpleMarkerLayerStyle as any} />
-        </MapboxGL.ShapeSource>
-      ) : null}
-
-      {customMarkerItems.map((m) => (
-        <MapboxGL.PointAnnotation
-          key={m.id}
-          id={m.id}
-          coordinate={m.coordinate}
-          title={m.title}
-          onSelected={() => {
-            lastMarkerTapAtRef.current = Date.now();
-            m.onPress?.();
-          }}
-        >
-          {m.child}
-        </MapboxGL.PointAnnotation>
-      ))}
-    </MapboxGL.MapView>
+          >
+            {m.child}
+          </MapboxGL.PointAnnotation>
+        ))}
+      </MapboxGL.MapView>
+    </View>
   );
 });
 

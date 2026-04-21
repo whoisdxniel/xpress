@@ -1,6 +1,6 @@
 const API_SUFFIX = "/api";
 
-const DEFAULT_PROD_API_BASE_URL = "https://xpress-production-e5d4.up.railway.app/api";
+const DEFAULT_PROD_API_BASE_URL = "https://xpress-production-c897.up.railway.app/api";
 
 function guessLanApiBaseUrl() {
   try {

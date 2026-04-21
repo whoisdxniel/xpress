@@ -21,6 +21,7 @@ frontend/.env
 # Firebase (push)
 frontend/google-services.json
 frontend/GoogleService-Info.plist
+GoogleService-Info.plist
 
 # Firebase Admin SDK (service account JSON)
 *firebase-adminsdk*.json
@@ -47,3 +48,6 @@ Thumbs.db
 
 # Editor
 .vscode/
+
+# Notas locales auxiliares
+xpres_ios.txt

@@ -10,6 +10,7 @@
     "android:setup-sdk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\setup-android-sdk.ps1",
     "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-debug.ps1",
     "android:apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-release.ps1",
+    "android:playstore:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-release.ps1",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

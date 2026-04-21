@@ -5,6 +5,8 @@ import { playNotificationSound } from "./soundPlayer";
 
 export const ANDROID_SILENT_CHANNEL_ID = "xpress_silent_v3";
 
+const BRAND_NAME = "STAR TRASLADOS C.A";
+
 export function androidSoundChannelId(soundName: SoundName) {
   return `xpress_sound_${soundName}_v3`;
 }
@@ -52,7 +54,7 @@ export async function ensureAndroidSilentChannel() {
   if (Platform.OS !== "android") return;
   try {
     await Notifications.setNotificationChannelAsync(ANDROID_SILENT_CHANNEL_ID, {
-      name: "Xpress",
+      name: BRAND_NAME,
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       sound: null,
@@ -66,10 +68,10 @@ export async function ensureAndroidSoundChannels() {
   if (Platform.OS !== "android") return;
   // Android usa el nombre del recurso en res/raw (sin extensión): R.raw.<soundFile>
   const items: Array<{ id: string; name: string; soundFile: string }> = [
-    { id: androidSoundChannelId("disponibles"), name: "Xpress: disponibles", soundFile: "disponibles" },
-    { id: androidSoundChannelId("aceptar_servicio"), name: "Xpress: aceptar servicio", soundFile: "aceptar_servicio" },
-    { id: androidSoundChannelId("tienes_servicio"), name: "Xpress: tienes servicio", soundFile: "tienes_servicio" },
-    { id: androidSoundChannelId("uber_llego"), name: "Xpress: uber llegó", soundFile: "uber_llego" },
+    { id: androidSoundChannelId("disponibles"), name: `${BRAND_NAME}: disponibles`, soundFile: "disponibles" },
+    { id: androidSoundChannelId("aceptar_servicio"), name: `${BRAND_NAME}: aceptar servicio`, soundFile: "aceptar_servicio" },
+    { id: androidSoundChannelId("tienes_servicio"), name: `${BRAND_NAME}: tienes servicio`, soundFile: "tienes_servicio" },
+    { id: androidSoundChannelId("uber_llego"), name: `${BRAND_NAME}: uber llegó`, soundFile: "uber_llego" },
   ];
 
   await Promise.all(

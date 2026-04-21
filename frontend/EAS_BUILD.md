@@ -15,7 +15,7 @@ Opcional:
 - `EXPO_PUBLIC_OSRM_BASE_URL` (por defecto usa `https://router.project-osrm.org`).
 
 En `frontend/.env` podés definir, por ejemplo:
-- `EXPO_PUBLIC_API_BASE_URL=https://xpress-production-e5d4.up.railway.app/api`
+- `EXPO_PUBLIC_API_BASE_URL=https://xpress-production-c897.up.railway.app/api`
 
 ## 2) Instalar Android SDK (una sola vez)
 Desde `frontend/`:

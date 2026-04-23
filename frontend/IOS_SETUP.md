@@ -16,6 +16,7 @@ No se cambio la ruta Android. Android sigue usando FCM con la service account ac
 - `GoogleService-Info.plist`:
   - Opcional para el flujo actual de push iOS.
   - Si lo agregas en `frontend/GoogleService-Info.plist` o en la raiz del repo, `app.config.js` lo detecta y Expo lo inyecta en iOS automaticamente.
+  - El build local sincroniza automaticamente el archivo de la raiz hacia `frontend/GoogleService-Info.plist` si existe.
   - No va en Railway.
 
 - Mapbox:
@@ -64,4 +65,4 @@ No se cambio la ruta Android. Android sigue usando FCM con la service account ac
 - `watchPositionAsync` sigue siendo foreground-only en iOS, pero ahora el chofer usa `startLocationUpdatesAsync` en background para seguir reportando ubicacion cuando la app queda minimizada.
 - En iPhone, el chofer debe aceptar el permiso `Always` para que el tracking en segundo plano funcione.
 - La config actual ya no agrega `remote-notification` en iOS porque el push quedo pausado.
-- El bundle identifier actual esperado por backend/APNs es `com.xpress.traslados`.
+- El bundle identifier actual esperado por backend/APNs es `com.star.trasladossc`.

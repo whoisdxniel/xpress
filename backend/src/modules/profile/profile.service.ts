@@ -162,3 +162,60 @@ export async function updateMyDriverProfile(params: {
 
   return { ok: true as const, driver: updated };
 }
+
+export async function deleteMyAccount(params: { userId: string }) {
+  const user = await prisma.user.findUnique({ where: { id: params.userId } });
+  if (!user) return { ok: false as const, status: 404 as const, error: "User not found" };
+  if (user.role === UserRole.ADMIN) {
+    return { ok: false as const, status: 403 as const, error: "Admin account deletion is not supported" };
+  }
+
+  if (user.role === UserRole.USER) {
+    await prisma.user.delete({ where: { id: user.id } });
+    return { ok: true as const };
+  }
+
+  const driver = await prisma.driverProfile.findUnique({
+    where: { userId: user.id },
+    select: { id: true, userId: true },
+  });
+  if (!driver) return { ok: false as const, status: 404 as const, error: "Driver profile not found" };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.rideRequest.updateMany({
+      where: {
+        matchedDriverId: driver.id,
+        status: { in: ["OPEN", "ASSIGNED", "ACCEPTED", "MATCHED", "IN_PROGRESS"] },
+      },
+      data: {
+        status: "CANCELLED",
+        matchedDriverId: null,
+        matchedAt: null,
+        acceptedAt: null,
+        startedAt: null,
+      },
+    });
+
+    await tx.rideRequest.updateMany({
+      where: {
+        matchedDriverId: driver.id,
+        status: { in: ["CANCELLED", "EXPIRED", "COMPLETED"] },
+      },
+      data: { matchedDriverId: null },
+    });
+
+    await tx.rideOffer.updateMany({
+      where: { committedDriverId: driver.id, status: "COMMITTED" },
+      data: { status: "OPEN", committedDriverId: null, committedAt: null },
+    });
+
+    await tx.rideOffer.updateMany({
+      where: { committedDriverId: driver.id, status: { in: ["OPEN", "CANCELLED", "EXPIRED"] } },
+      data: { committedDriverId: null, committedAt: null },
+    });
+
+    await tx.user.delete({ where: { id: driver.userId } });
+  });
+
+  return { ok: true as const };
+}

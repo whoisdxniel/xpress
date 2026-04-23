@@ -46,3 +46,7 @@ export function apiUpdateMyProfile(
 ) {
   return apiRequest<{ ok: true } | any>({ method: "PATCH", path: "/profile/me", token, body });
 }
+
+export function apiDeleteMyAccount(token: string) {
+  return apiRequest<{ ok: true }>({ method: "DELETE", path: "/profile/me", token });
+}

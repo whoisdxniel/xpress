@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { UpdateDriverProfileSchema, UpdatePassengerProfileSchema } from "./profile.schemas";
-import { getMyProfile, updateMyDriverProfile, updateMyPassengerProfile } from "./profile.service";
+import { deleteMyAccount, getMyProfile, updateMyDriverProfile, updateMyPassengerProfile } from "./profile.service";
 
 export async function getMyProfileController(req: Request, res: Response) {
   const userId = req.user?.id;
@@ -32,4 +32,13 @@ export async function updateMyProfileController(req: Request, res: Response) {
   }
 
   return res.status(403).json({ message: "Admin profile not supported" });
+}
+
+export async function deleteMyAccountController(req: Request, res: Response) {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  const result = await deleteMyAccount({ userId });
+  if (!result.ok) return res.status(result.status).json({ message: result.error });
+  return res.status(200).json(result);
 }

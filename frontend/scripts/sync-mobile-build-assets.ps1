@@ -79,6 +79,25 @@ function Sync-BrandingAssets {
   }
 }
 
+function Sync-FirebaseConfigs {
+  $rootGoogleServices = Join-Path $repoRoot 'google-services.json'
+  $frontendGoogleServices = Join-Path $projectRoot 'google-services.json'
+  $androidGoogleServices = Join-Path $androidDir 'app\google-services.json'
+
+  if (Test-Path $rootGoogleServices) {
+    Copy-Item -Force -Path $rootGoogleServices -Destination $frontendGoogleServices
+    if (Test-Path $androidDir) {
+      Copy-Item -Force -Path $rootGoogleServices -Destination $androidGoogleServices
+    }
+  }
+
+  $rootGoogleServiceInfo = Join-Path $repoRoot 'GoogleService-Info.plist'
+  $frontendGoogleServiceInfo = Join-Path $projectRoot 'GoogleService-Info.plist'
+  if (Test-Path $rootGoogleServiceInfo) {
+    Copy-Item -Force -Path $rootGoogleServiceInfo -Destination $frontendGoogleServiceInfo
+  }
+}
+
 function Sync-AndroidMetadata {
   if (!(Test-Path $androidDir)) {
     return
@@ -170,6 +189,7 @@ function Sync-AndroidLauncherAssets {
 }
 
 Sync-BrandingAssets
+Sync-FirebaseConfigs
 Sync-AndroidMetadata
 Sync-AndroidSounds
 Sync-AndroidLauncherAssets

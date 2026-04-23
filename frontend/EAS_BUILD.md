@@ -42,6 +42,7 @@ Salida esperada:
 Esta app registra el token nativo (FCM) con `expo-notifications` y el backend envía por Firebase Admin.
 
 Para que las push funcionen en el APK:
-- Crear un proyecto Firebase con el package `com.xpress.traslados`.
-- Descargar `google-services.json` y colocarlo en `frontend/google-services.json`.
-- Configurar el backend (Railway) con `FCM_SERVICE_ACCOUNT_JSON` (service account de Firebase).
+- Crear un proyecto Firebase con el package `com.star.trasladossc`.
+- Descargar `google-services.json` y colocarlo en la raiz del repo o en `frontend/google-services.json`.
+- El build local sincroniza automaticamente ese archivo a `frontend/android/app/google-services.json`.
+- Configurar el backend (Railway) con `FCM_SERVICE_ACCOUNT_JSON` o `FCM_SERVICE_ACCOUNT_JSON_B64` usando la service account del proyecto Firebase nuevo.

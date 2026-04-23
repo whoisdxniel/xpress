@@ -19,6 +19,7 @@ upload/uploads/
 frontend/.env
 
 # Firebase (push)
+google-services.json
 frontend/google-services.json
 frontend/GoogleService-Info.plist
 GoogleService-Info.plist

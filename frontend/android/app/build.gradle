@@ -87,13 +87,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.xpress.traslados'
+    namespace 'com.star.trasladossc'
     defaultConfig {
-        applicationId 'com.xpress.traslados'
+        applicationId 'com.star.trasladossc'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 21
-        versionName "1.0.18"
+        versionCode 22
+        versionName "1.0.19"
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
@@ -204,5 +204,9 @@ dependencies {
 }
 
 apply plugin: 'com.google.gms.google-services'
+
+
+
+
 
 

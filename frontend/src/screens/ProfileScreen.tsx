@@ -10,8 +10,8 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { ReadOnlyField } from "../components/ReadOnlyField";
 import { colors } from "../theme/colors";
 import { useAuth } from "../auth/AuthContext";
-import { apiGetMyProfile, apiUpdateMyProfile } from "../profile/profile.api";
-import { getSavedPasswordForUser } from "../lib/credentials";
+import { apiDeleteMyAccount, apiGetMyProfile, apiUpdateMyProfile } from "../profile/profile.api";
+import { clearSavedPasswordForUser, getSavedPasswordForUser } from "../lib/credentials";
 
 export function ProfileScreen() {
   const auth = useAuth();
@@ -21,6 +21,7 @@ export function ProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -195,6 +196,38 @@ export function ProfileScreen() {
     await save();
   }
 
+  function confirmDeleteAccount() {
+    if (!token || !userId) return;
+
+    Alert.alert(
+      "Eliminar cuenta",
+      "Esta acción eliminará tu cuenta y los datos asociados que puedan borrarse automáticamente. No se puede deshacer.\n\n¿Deseas continuar?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                setDeleting(true);
+                setError(null);
+                await apiDeleteMyAccount(token);
+                await clearSavedPasswordForUser(userId);
+                await auth.logout();
+                Alert.alert("Cuenta eliminada", "Tu cuenta fue eliminada correctamente.");
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "No se pudo eliminar la cuenta");
+              } finally {
+                setDeleting(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
   if (role === "ADMIN") {
     return (
       <Screen>
@@ -339,7 +372,7 @@ export function ProfileScreen() {
           <PrimaryButton
             label={isEditing ? (saving ? "Guardando..." : "Guardar") : "Editar"}
             onPress={() => void onMainButtonPress()}
-            disabled={saving}
+            disabled={saving || deleting}
           />
 
           {isDriver ? (
@@ -416,6 +449,32 @@ export function ProfileScreen() {
               <Text style={styles.readLine}>{driverReadonly.photoUrl}</Text>
             </View>
           ) : null}
+
+          <View style={styles.dangerZone}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="warning-outline" size={18} color={colors.danger} />
+              <Text style={[styles.sectionTitle, { color: colors.danger }]}>Eliminar cuenta</Text>
+            </View>
+
+            <Text style={styles.readLine}>
+              Si eliminas tu cuenta, se borrarán tu acceso y los datos asociados que el sistema pueda eliminar automáticamente.
+            </Text>
+            <Text style={styles.readLine}>
+              También puedes consultar el recurso web de eliminación en /account-deletion para usar la misma información en Play Store.
+            </Text>
+
+            <Pressable
+              onPress={isEditing || saving || deleting ? undefined : confirmDeleteAccount}
+              style={({ pressed }) => [
+                styles.deleteButton,
+                (isEditing || saving || deleting) && styles.deleteButtonDisabled,
+                pressed && !(isEditing || saving || deleting) ? styles.deleteButtonPressed : null,
+              ]}
+            >
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.deleteButtonText}>{deleting ? "Eliminando..." : "Eliminar cuenta"}</Text>
+            </Pressable>
+          </View>
         </Card>
       </ScrollView>
     </Screen>
@@ -462,5 +521,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "700",
+  },
+  dangerZone: {
+    marginTop: 18,
+    gap: 10,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  deleteButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: colors.danger,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  deleteButtonPressed: {
+    opacity: 0.85,
+  },
+  deleteButtonText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 15,
   },
 });

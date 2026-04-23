@@ -9,6 +9,7 @@ import { errorMiddleware } from "./middlewares/error.middleware";
 import { env } from "./utils/env";
 import { prisma } from "./db/prisma";
 import { ensurePricingConfigsForAllServiceTypes } from "./modules/config/pricingBootstrap";
+import { legalRouter } from "./modules/legal/legal.routes";
 
 function redactSensitive(input: string) {
   return input
@@ -44,6 +45,7 @@ export function createApp() {
   app.use(morgan("dev"));
 
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+  app.use(legalRouter);
 
   app.get("/health", (_req, res) => res.status(200).json({ ok: true }));
   app.get("/health/db", async (_req, res) => {

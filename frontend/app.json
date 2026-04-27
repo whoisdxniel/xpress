@@ -2,7 +2,7 @@
   "expo": {
     "name": "STAR TRASLADOS C.A",
     "slug": "xpress",
-    "version": "1.0.19",
+    "version": "1.0.20",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,14 +15,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.star.trasladossc",
-      "buildNumber": "22",
+      "buildNumber": "23",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "STAR TRASLADOS C.A usa tu ubicacion para mostrar el mapa, calcular rutas y actualizar tus viajes en tiempo real."
+        "NSLocationWhenInUseUsageDescription": "STAR TRASLADOS C.A usa tu ubicacion para mostrar el mapa, calcular rutas y actualizar tus viajes en tiempo real.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.star.trasladossc",
-      "versionCode": 22,
+      "versionCode": 23,
       "googleServicesFile": "./google-services.json",
       "blockedPermissions": [
         "android.permission.CAMERA"
@@ -62,6 +63,10 @@
       "@rnmapbox/maps",
       "expo-font"
     ],
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "bf22f95f-5fa2-4b14-a19a-53a285c97d66"
+      }
+    }
   }
 }

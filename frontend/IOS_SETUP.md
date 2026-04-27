@@ -38,6 +38,17 @@ No se cambio la ruta Android. Android sigue usando FCM con la service account ac
   - `APNS_BUNDLE_ID`
   - `APNS_USE_SANDBOX=true` solo para development builds/debug en dispositivo
 
+### EAS / TestFlight
+
+- Este proyecto ya queda preparado para compilar iOS en la nube con EAS desde Windows mediante `frontend/eas.json`.
+- Antes del primer build en Expo/EAS, crea el environment `production` con estas variables:
+  - `EXPO_PUBLIC_API_BASE_URL`
+  - `EXPO_PUBLIC_OSRM_BASE_URL`
+  - `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`
+  - `MAPBOX_DOWNLOADS_TOKEN`
+  - `EXPO_PUBLIC_IOS_PUSH_ENABLED=0` mientras el push iOS siga pausado
+- Si luego quieres builds internas de prueba en lugar de App Store Connect, usa el environment `preview` con las mismas variables.
+
 ## Build en Mac
 
 ## Requisito de toolchain
@@ -56,6 +67,16 @@ No se cambio la ruta Android. Android sigue usando FCM con la service account ac
 3. Exportar `RNMAPBOX_MAPS_DOWNLOAD_TOKEN` o mantener `MAPBOX_DOWNLOADS_TOKEN`.
 4. Ejecutar `npx expo prebuild --platform ios`.
 5. Ejecutar `npx expo run:ios --device` o abrir `ios/*.xcworkspace` en Xcode.
+
+## Flujo TestFlight sin Mac local
+
+1. En `frontend/`, iniciar sesion en Expo: `npx eas-cli login`.
+2. Vincular el proyecto si Expo lo pide en el primer uso de EAS.
+3. Confirmar que el environment `production` tenga cargadas las variables publicas y el token de descargas de Mapbox.
+4. Lanzar el build para App Store Connect: `npm run ios:testflight:build`.
+5. Cuando EAS termine, enviar el `.ipa` a TestFlight: `npm run ios:testflight:submit`.
+
+No hace falta una Mac para ese flujo en la nube, pero si hacen falta una cuenta Expo y una cuenta Apple Developer activas.
 
 ## Notas importantes
 

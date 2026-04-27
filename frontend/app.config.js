@@ -14,23 +14,27 @@ module.exports = ({ config }) => {
 
   const googleServiceCandidates = [
     {
+      absolutePath: process.env.GOOGLE_SERVICE_INFO_PLIST,
+      configPath: process.env.GOOGLE_SERVICE_INFO_PLIST,
+    },
+    {
       absolutePath: path.join(__dirname, "GoogleService-Info.plist"),
-      relativePath: "./GoogleService-Info.plist",
+      configPath: "./GoogleService-Info.plist",
     },
     {
       absolutePath: path.join(__dirname, "..", "GoogleService-Info.plist"),
-      relativePath: "../GoogleService-Info.plist",
+      configPath: "../GoogleService-Info.plist",
     },
   ];
 
   const googleServiceInfoFile = googleServiceCandidates.find((candidate) =>
-    fs.existsSync(candidate.absolutePath)
+    candidate.absolutePath && fs.existsSync(candidate.absolutePath)
   );
 
   if (googleServiceInfoFile) {
     baseConfig.ios = {
       ...(baseConfig.ios || {}),
-      googleServicesFile: googleServiceInfoFile.relativePath,
+      googleServicesFile: googleServiceInfoFile.configPath,
     };
   }
 

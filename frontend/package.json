@@ -11,6 +11,8 @@
     "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-debug.ps1",
     "android:apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-release.ps1",
     "android:playstore:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-apk-release.ps1",
+    "ios:testflight:build": "npx eas-cli build --platform ios --profile production",
+    "ios:testflight:submit": "npx eas-cli submit --platform ios --profile production",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

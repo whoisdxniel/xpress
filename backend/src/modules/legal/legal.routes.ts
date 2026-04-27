@@ -2,6 +2,8 @@ import { Router } from "express";
 
 const APP_NAME = "STAR TRASLADOS C.A";
 const EFFECTIVE_DATE = "23 de abril de 2026";
+const CHILD_SAFETY_EFFECTIVE_DATE = "27 de abril de 2026";
+const SUPPORT_EMAIL = "burgosdeveloper@gmail.com";
 
 function escapeHtml(input: string) {
   return input
@@ -12,7 +14,12 @@ function escapeHtml(input: string) {
     .replace(/'/g, "&#39;");
 }
 
-function renderPage(params: { title: string; intro?: string; sections: Array<{ title: string; paragraphs?: string[]; items?: string[] }> }) {
+function renderPage(params: {
+  title: string;
+  intro?: string;
+  effectiveDate?: string;
+  sections: Array<{ title: string; paragraphs?: string[]; items?: string[] }>;
+}) {
   const intro = params.intro ? `<p>${escapeHtml(params.intro)}</p>` : "";
   const sections = params.sections
     .map((section) => {
@@ -37,7 +44,7 @@ function renderPage(params: { title: string; intro?: string; sections: Array<{ t
     `  <main>`,
     `    <h1>${escapeHtml(params.title)}</h1>`,
     `    <p><strong>Aplicación:</strong> ${escapeHtml(APP_NAME)}</p>`,
-    `    <p><strong>Fecha de vigencia:</strong> ${escapeHtml(EFFECTIVE_DATE)}</p>`,
+    `    <p><strong>Fecha de vigencia:</strong> ${escapeHtml(params.effectiveDate ?? EFFECTIVE_DATE)}</p>`,
     `    ${intro}`,
     `    ${sections}`,
     "  </main>",
@@ -179,6 +186,61 @@ function renderAccountDeletionHtml() {
   });
 }
 
+function renderChildSafetyStandardsHtml() {
+  return renderPage({
+    title: "Estándares de seguridad de los niños",
+    effectiveDate: CHILD_SAFETY_EFFECTIVE_DATE,
+    intro:
+      "STAR TRASLADOS C.A mantiene una política de tolerancia cero frente a cualquier forma de explotación, abuso sexual infantil o material de abuso sexual infantil (CSAM/CSAE) dentro de la plataforma.",
+    sections: [
+      {
+        title: "1. Conducta prohibida",
+        items: [
+          "Está prohibido publicar, compartir, solicitar, promocionar o almacenar material relacionado con abuso o explotación sexual infantil.",
+          "Está prohibido usar la app para contactar, captar, acosar, amenazar o explotar a menores de edad.",
+          "Está prohibido cualquier intento de grooming, sextorsión, trata, coerción o facilitación de encuentros ilegales con menores.",
+          "Está prohibido el uso de cuentas, perfiles, mensajes, archivos o datos de viaje para fines que vulneren la integridad y seguridad de niños, niñas o adolescentes.",
+        ],
+      },
+      {
+        title: "2. Alcance y elegibilidad",
+        paragraphs: [
+          "La aplicación no está dirigida a niños. El uso de la plataforma debe realizarse conforme a la normativa aplicable y bajo la responsabilidad de adultos autorizados cuando corresponda.",
+        ],
+      },
+      {
+        title: "3. Medidas de prevención y respuesta",
+        items: [
+          "Se pueden suspender o eliminar de inmediato cuentas involucradas en conductas prohibidas o sospechas razonables de este tipo de abuso.",
+          "Se pueden bloquear contenidos, archivos, perfiles o accesos relacionados con reportes de seguridad infantil.",
+          "La plataforma puede conservar registros mínimos necesarios para investigación, auditoría, prevención de fraude y cooperación con autoridades competentes.",
+          "Cuando corresponda, se colaborará con autoridades y requerimientos legales válidos para la protección de menores.",
+        ],
+      },
+      {
+        title: "4. Cómo reportar",
+        paragraphs: [
+          `Si detectas una conducta, contenido o interacción que pueda poner en riesgo a un menor, repórtalo de inmediato al correo ${SUPPORT_EMAIL}.`,
+          "Incluye, si los tienes, datos como usuario involucrado, teléfono, capturas, fecha, hora y cualquier referencia del viaje o incidente para facilitar la revisión.",
+          "Si existe riesgo inminente o posible delito, además del reporte en la plataforma, contacta de inmediato a las autoridades competentes de tu jurisdicción.",
+        ],
+      },
+      {
+        title: "5. Cumplimiento",
+        paragraphs: [
+          "El incumplimiento de estos estándares puede derivar en suspensión permanente de la cuenta, bloqueo de acceso, preservación de evidencias y demás acciones permitidas por la ley y por las políticas de la plataforma.",
+        ],
+      },
+      {
+        title: "6. Contacto designado",
+        paragraphs: [
+          `Correo de contacto para este estándar: ${SUPPORT_EMAIL}.`,
+        ],
+      },
+    ],
+  });
+}
+
 export const legalRouter = Router();
 
 legalRouter.get("/privacy-policy", (_req, res) => {
@@ -187,4 +249,8 @@ legalRouter.get("/privacy-policy", (_req, res) => {
 
 legalRouter.get("/account-deletion", (_req, res) => {
   res.status(200).type("html").send(renderAccountDeletionHtml());
+});
+
+legalRouter.get("/child-safety-standards", (_req, res) => {
+  res.status(200).type("html").send(renderChildSafetyStandardsHtml());
 });

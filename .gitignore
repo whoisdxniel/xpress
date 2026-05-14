@@ -31,6 +31,13 @@ GoogleService-Info.plist
 *.keystore
 *.jks
 
+# Apple signing / APNs keys (nunca commitear)
+AuthKey_*.p8
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
 # Expo prebuild (generado)
 frontend/android/
 frontend/ios/
@@ -52,3 +59,4 @@ Thumbs.db
 
 # Notas locales auxiliares
 xpres_ios.txt
+prompt.txt

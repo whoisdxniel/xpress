@@ -4,7 +4,7 @@ Estado actual del proyecto en iPhone:
 
 - Realtime activo por Socket.IO cuando la app esta abierta.
 - Sonidos foreground disparados por eventos realtime, sin depender de push.
-- Push iOS pausado por defecto en esta iteracion.
+- Push iOS remoto habilitado por defecto para builds nativos, dev client y TestFlight.
 - Ubicacion del chofer en segundo plano por `expo-location` solo en iOS, para seguir sincronizando posicion con la app minimizada.
 
 No se cambio la ruta Android. Android sigue usando FCM con la service account actual.
@@ -30,8 +30,9 @@ No se cambio la ruta Android. Android sigue usando FCM con la service account ac
   - `FCM_SERVICE_ACCOUNT_JSON` o `FCM_SERVICE_ACCOUNT_PATH`
 
 - iOS:
-  - El push remoto esta desactivado por defecto mientras `EXPO_PUBLIC_IOS_PUSH_ENABLED` no sea `1`.
-  - Si mas adelante se reactiva APNs, vuelven a aplicar estas variables:
+  - El push remoto queda activado por defecto.
+  - Si necesitas apagarlo temporalmente, define `EXPO_PUBLIC_IOS_PUSH_ENABLED=0`.
+  - Para el envio APNs desde backend/deploy siguen aplicando estas variables:
   - `APNS_AUTH_KEY_P8` o `APNS_AUTH_KEY_PATH` o `APNS_AUTH_KEY_P8_B64`
   - `APNS_KEY_ID`
   - `APNS_TEAM_ID`
@@ -46,7 +47,7 @@ No se cambio la ruta Android. Android sigue usando FCM con la service account ac
   - `EXPO_PUBLIC_OSRM_BASE_URL`
   - `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`
   - `MAPBOX_DOWNLOADS_TOKEN`
-  - `EXPO_PUBLIC_IOS_PUSH_ENABLED=0` mientras el push iOS siga pausado
+  - `EXPO_PUBLIC_IOS_PUSH_ENABLED=1` si quieres dejar explícito el registro push iOS en ese entorno
 - Si luego quieres builds internas de prueba en lugar de App Store Connect, usa el environment `preview` con las mismas variables.
 
 ## Build en Mac
@@ -80,7 +81,8 @@ No hace falta una Mac para ese flujo en la nube, pero si hacen falta una cuenta 
 
 ## Notas importantes
 
-- En esta iteracion, iOS no intenta registrar push remoto salvo que definas `EXPO_PUBLIC_IOS_PUSH_ENABLED=1`.
+- En esta iteracion, iOS intenta registrar push remoto por defecto en builds nativos.
+- Si necesitas desactivarlo en una build puntual, usa `EXPO_PUBLIC_IOS_PUSH_ENABLED=0`.
 - Sin APNs no hay avisos equivalentes a Android con la app cerrada; el objetivo actual es foreground realtime estable.
 - Push remoto iOS no funciona en simulator; prueba en iPhone fisico.
 - `watchPositionAsync` sigue siendo foreground-only en iOS, pero ahora el chofer usa `startLocationUpdatesAsync` en background para seguir reportando ubicacion cuando la app queda minimizada.

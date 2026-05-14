@@ -13,9 +13,18 @@ import { isSoundName } from "./channels";
 
 const LOCAL_MARKER_KEY = "__xpress_local";
 
+function envFlagEnabled(value: string | undefined, defaultValue: boolean) {
+  if (value == null) return defaultValue;
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return defaultValue;
+
+  return !["0", "false", "no", "off"].includes(normalized);
+}
+
 export function isIOSPushEnabled() {
   if (Platform.OS !== "ios") return true;
-  return process.env.EXPO_PUBLIC_IOS_PUSH_ENABLED === "1";
+  return envFlagEnabled(process.env.EXPO_PUBLIC_IOS_PUSH_ENABLED, true);
 }
 
 function extractSoundNameForHandler(notification: Notifications.Notification): string {

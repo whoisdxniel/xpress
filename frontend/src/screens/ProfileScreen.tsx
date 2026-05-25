@@ -460,7 +460,7 @@ export function ProfileScreen() {
               Si eliminas tu cuenta, se borrarán tu acceso y los datos asociados que el sistema pueda eliminar automáticamente.
             </Text>
             <Text style={styles.readLine}>
-              También puedes consultar el recurso web de eliminación en /account-deletion para usar la misma información en Play Store.
+              También puedes consultar el recurso web de eliminación en /account-deletion.
             </Text>
 
             <Pressable

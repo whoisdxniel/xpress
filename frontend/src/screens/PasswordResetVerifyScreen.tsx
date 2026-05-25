@@ -20,6 +20,7 @@ export function PasswordResetVerifyScreen({ route, navigation }: Props) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const errors = useMemo(() => {
     const parsed = Schema.safeParse({ code });
@@ -30,6 +31,7 @@ export function PasswordResetVerifyScreen({ route, navigation }: Props) {
   }, [code]);
 
   async function onSubmit() {
+    setSubmitted(true);
     setError(null);
     const parsed = Schema.safeParse({ code });
     if (!parsed.success) {
@@ -59,10 +61,10 @@ export function PasswordResetVerifyScreen({ route, navigation }: Props) {
           <TextField
             label="Código"
             value={code}
-            onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
-            placeholder="123456"
+            onChangeText={setCode}
+            placeholder="000000"
             keyboardType="number-pad"
-            error={errors.code}
+            error={submitted ? errors.code : null}
           />
 
           {!!error && <Text style={styles.error}>{error}</Text>}

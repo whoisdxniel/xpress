@@ -52,7 +52,6 @@ import { subscribeRealtimeEvent } from "../realtime/socket";
 import { getMatchedDrivingTraceDistanceMeters, getTraceStraightDistanceMeters, type TimedCoords } from "../utils/directions";
 
 const zoeImg = require("../../assets/zoe.png");
-const playstoreImg = require("../../assets/playstore.png");
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -1930,9 +1929,7 @@ export function HomeScreen({ navigation }: Props) {
         <View style={{ height: 14 }} />
         <PrimaryButton label="Cerrar sesión" onPress={() => void auth.logout()} />
 
-        <View style={styles.footerBrand}>
-          <Image source={playstoreImg} style={styles.footerBrandImg} resizeMode="contain" />
-        </View>
+        
       </ScrollView>
 
     </Screen>

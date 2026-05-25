@@ -28,6 +28,7 @@ export function PasswordResetConfirmScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const errors = useMemo(() => {
     const parsed = Schema.safeParse({ newPassword, confirmPassword });
@@ -38,6 +39,7 @@ export function PasswordResetConfirmScreen({ route, navigation }: Props) {
   }, [newPassword, confirmPassword]);
 
   async function onSubmit() {
+    setSubmitted(true);
     setError(null);
     const parsed = Schema.safeParse({ newPassword, confirmPassword });
     if (!parsed.success) {
@@ -66,13 +68,13 @@ export function PasswordResetConfirmScreen({ route, navigation }: Props) {
           <Text style={styles.title}>Nueva contraseña</Text>
           <Text style={styles.subtitle}>Elegí una contraseña nueva.</Text>
 
-          <TextField
+           <TextField
             label="Nueva contraseña"
             value={newPassword}
             onChangeText={setNewPassword}
             placeholder="••••••••"
             secureTextEntry
-            error={errors.newPassword}
+            error={submitted ? errors.newPassword : null}
           />
           <TextField
             label="Repetir contraseña"
@@ -80,7 +82,7 @@ export function PasswordResetConfirmScreen({ route, navigation }: Props) {
             onChangeText={setConfirmPassword}
             placeholder="••••••••"
             secureTextEntry
-            error={errors.confirmPassword}
+            error={submitted ? errors.confirmPassword : null}
           />
 
           {!!error && <Text style={styles.error}>{error}</Text>}

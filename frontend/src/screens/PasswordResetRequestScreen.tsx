@@ -19,6 +19,7 @@ export function PasswordResetRequestScreen({ route, navigation }: Props) {
   const [user, setUser] = useState(route.params?.presetUser ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const errors = useMemo(() => {
     const parsed = Schema.safeParse({ user });
@@ -29,6 +30,7 @@ export function PasswordResetRequestScreen({ route, navigation }: Props) {
   }, [user]);
 
   async function onSubmit() {
+    setSubmitted(true);
     setError(null);
     const parsed = Schema.safeParse({ user });
     if (!parsed.success) {
@@ -56,7 +58,7 @@ export function PasswordResetRequestScreen({ route, navigation }: Props) {
             Ingresá tu usuario. Un admin verá el código y te lo enviará por WhatsApp.
           </Text>
 
-          <TextField label="Usuario" value={user} onChangeText={setUser} placeholder="email o username" error={errors.user} />
+          <TextField label="Usuario" value={user} onChangeText={setUser} placeholder="email o username" error={submitted ? errors.user : null} />
           {!!error && <Text style={styles.error}>{error}</Text>}
           <PrimaryButton label={loading ? "Solicitando..." : "Solicitar código"} onPress={onSubmit} disabled={loading} />
         </View>

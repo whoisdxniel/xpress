@@ -113,7 +113,7 @@ function renderPrivacyPolicyHtml() {
         items: [
           "Acceder y actualizar sus datos desde la app cuando la funcionalidad esté disponible.",
           "Solicitar la eliminación de su cuenta y de los datos asociados desde la app o mediante el recurso web de eliminación de cuenta.",
-          "Contactar al correo de soporte publicado en la ficha de Google Play para consultas relacionadas con privacidad o eliminación de datos.",
+          "Contactar al correo de soporte de la aplicación (burgosdeveloper@gmail.com) para consultas relacionadas con privacidad o eliminación de datos.",
         ],
       },
       {
@@ -131,7 +131,7 @@ function renderPrivacyPolicyHtml() {
       {
         title: "9. Contacto",
         paragraphs: [
-          "Para consultas sobre privacidad, seguridad de datos o eliminación de cuenta, usa el correo de soporte publicado en la ficha de Google Play de la aplicación.",
+          `Para consultas sobre privacidad, seguridad de datos o eliminación de cuenta, usa el correo de soporte de la aplicación: ${SUPPORT_EMAIL}.`,
         ],
       },
     ],
@@ -142,7 +142,7 @@ function renderAccountDeletionHtml() {
   return renderPage({
     title: "Eliminación de cuenta",
     intro:
-      "Los usuarios de STAR TRASLADOS C.A pueden solicitar la eliminación de su cuenta y de los datos asociados conforme a los requisitos de Google Play.",
+      "Los usuarios de STAR TRASLADOS C.A pueden solicitar la eliminación de su cuenta y de los datos asociados.",
     sections: [
       {
         title: "1. Solicitud desde la app",
@@ -156,7 +156,7 @@ function renderAccountDeletionHtml() {
       {
         title: "2. Solicitud mediante recurso web",
         paragraphs: [
-          "Si no puedes acceder a la app, puedes solicitar la eliminación escribiendo al correo de soporte publicado en la ficha de Google Play de la aplicación.",
+          `Si no puedes acceder a la app, puedes solicitar la eliminación escribiendo al correo de soporte de la aplicación: ${SUPPORT_EMAIL}.`,
           "En tu mensaje indica, como mínimo, el correo electrónico y el número de teléfono asociados a la cuenta para poder ubicarla y procesar la solicitud.",
         ],
       },
@@ -241,6 +241,36 @@ function renderChildSafetyStandardsHtml() {
   });
 }
 
+function renderSupportHtml() {
+  return renderPage({
+    title: "Soporte y Contacto",
+    intro:
+      "Si tienes alguna duda, problema o sugerencia con la aplicación STAR TRASLADOS C.A, estamos aquí para ayudarte.",
+    sections: [
+      {
+        title: "1. Información de contacto",
+        paragraphs: [
+          "Puedes comunicarte con nuestro equipo de soporte directamente a través de los siguientes medios:",
+        ],
+        items: [
+          `Correo electrónico: ${SUPPORT_EMAIL}`,
+          "Teléfono / WhatsApp de atención: +58 414-0572900",
+        ],
+      },
+      {
+        title: "2. Preguntas frecuentes y asistencia",
+        paragraphs: [
+          "Atendemos solicitudes relacionadas con:",
+          "• Problemas para iniciar sesión o recuperar tu contraseña.",
+          "• Dudas sobre el cálculo de tarifas o zonas de servicio.",
+          "• Reportes de conducta de pasajeros o conductores.",
+          "• Solicitudes de eliminación de cuenta y datos personales.",
+        ],
+      },
+    ],
+  });
+}
+
 export const legalRouter = Router();
 
 legalRouter.get("/privacy-policy", (_req, res) => {
@@ -253,4 +283,12 @@ legalRouter.get("/account-deletion", (_req, res) => {
 
 legalRouter.get("/child-safety-standards", (_req, res) => {
   res.status(200).type("html").send(renderChildSafetyStandardsHtml());
+});
+
+legalRouter.get("/support", (_req, res) => {
+  res.status(200).type("html").send(renderSupportHtml());
+});
+
+legalRouter.get("/", (_req, res) => {
+  res.status(200).type("html").send(renderSupportHtml());
 });

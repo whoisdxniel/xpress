@@ -30,6 +30,7 @@ export function RegisterPassengerScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const errors = useMemo(() => {
     const parsed = RegisterSchema.safeParse({ fullName, phone, email, password, confirmPassword });
@@ -40,6 +41,7 @@ export function RegisterPassengerScreen() {
   }, [fullName, phone, email, password, confirmPassword]);
 
   async function onSubmit() {
+    setSubmitted(true);
     setError(null);
     const parsed = RegisterSchema.safeParse({ fullName, phone, email, password, confirmPassword });
     if (!parsed.success) {
@@ -70,17 +72,17 @@ export function RegisterPassengerScreen() {
           <Text style={styles.title}>Registro (Cliente)</Text>
           <Text style={styles.subtitle}>Completá tus datos para empezar.</Text>
 
-          <TextField label="Nombre y apellido" value={fullName} onChangeText={setFullName} placeholder="Tu nombre" error={errors.fullName} />
-          <TextField label="Teléfono" value={phone} onChangeText={setPhone} placeholder="WhatsApp" keyboardType="phone-pad" error={errors.phone} />
-          <TextField label="Email" value={email} onChangeText={setEmail} placeholder="tu@email.com" keyboardType="email-address" error={errors.email} />
-          <TextField label="Contraseña" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry error={errors.password} />
+           <TextField label="Nombre y apellido" value={fullName} onChangeText={setFullName} placeholder="Tu nombre" error={submitted ? errors.fullName : null} />
+          <TextField label="Teléfono" value={phone} onChangeText={setPhone} placeholder="WhatsApp" keyboardType="phone-pad" error={submitted ? errors.phone : null} />
+          <TextField label="Email" value={email} onChangeText={setEmail} placeholder="tu@email.com" keyboardType="email-address" error={submitted ? errors.email : null} />
+          <TextField label="Contraseña" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry error={submitted ? errors.password : null} />
           <TextField
             label="Repetir contraseña"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             placeholder="••••••••"
             secureTextEntry
-            error={errors.confirmPassword}
+            error={submitted ? errors.confirmPassword : null}
           />
 
           {!!error && <Text style={styles.error}>{error}</Text>}

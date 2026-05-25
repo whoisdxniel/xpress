@@ -27,6 +27,7 @@ export function LoginScreen({ navigation }: Props) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const errors = useMemo(() => {
     const parsed = LoginFormSchema.safeParse({ user, password });
@@ -37,6 +38,7 @@ export function LoginScreen({ navigation }: Props) {
   }, [user, password]);
 
   async function onSubmit() {
+    setSubmitted(true);
     setError(null);
     const parsed = LoginFormSchema.safeParse({ user, password });
     if (!parsed.success) {
@@ -91,7 +93,7 @@ export function LoginScreen({ navigation }: Props) {
             onChangeText={setUser}
             placeholder="email o username"
             keyboardType="email-address"
-            error={errors.user}
+            error={submitted ? errors.user : null}
           />
           <TextField
             label="Contraseña"
@@ -103,7 +105,7 @@ export function LoginScreen({ navigation }: Props) {
             rightIconName={passwordVisible ? "eye-off-outline" : "eye-outline"}
             onPressRightIcon={() => setPasswordVisible((v) => !v)}
             rightIconAccessibilityLabel={passwordVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
-            error={errors.password}
+            error={submitted ? errors.password : null}
           />
 
           {!!error && <Text style={styles.error}>{error}</Text>}
@@ -117,8 +119,7 @@ export function LoginScreen({ navigation }: Props) {
           <Text style={styles.hint}>Ejecutivos y admin los crea el administrador.</Text>
           </View>
 
-          <View style={styles.footerBrand}>
-            <Image source={require("../../assets/playstore.png")} style={styles.footerBrandImg} resizeMode="contain" />
+          
           </View>
         </View>
       </ScrollView>

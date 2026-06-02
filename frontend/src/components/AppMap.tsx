@@ -205,26 +205,29 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
   }, [props.markers]);
 
   return (
-    <MapboxGL.MapView
+    <View
       style={[StyleSheet.absoluteFill, props.style]}
-      styleURL={MapboxGL.StyleURL.Street}
-      rotateEnabled={interactive ? (props.rotateEnabled ?? true) : false}
-      pitchEnabled={interactive ? (props.pitchEnabled ?? false) : false}
-      scrollEnabled={interactive ? (props.scrollEnabled ?? true) : false}
-      zoomEnabled={interactive ? (props.zoomEnabled ?? true) : false}
-      onPress={onMapPress as any}
-      onDidFinishLoadingMap={() => props.onMapReady?.()}
       pointerEvents={interactive ? "auto" : "none"}
-      onTouchStart={() => {
-        if (!interactive) return;
-        props.onUserGesture?.();
-      }}
-      onTouchMove={() => {
-        if (!interactive) return;
-        props.onUserGesture?.();
-      }}
     >
-      <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} />
+      <MapboxGL.MapView
+        style={StyleSheet.absoluteFill}
+        styleURL={MapboxGL.StyleURL.Street}
+        rotateEnabled={interactive ? (props.rotateEnabled ?? true) : false}
+        pitchEnabled={interactive ? (props.pitchEnabled ?? false) : false}
+        scrollEnabled={interactive ? (props.scrollEnabled ?? true) : false}
+        zoomEnabled={interactive ? (props.zoomEnabled ?? true) : false}
+        onPress={onMapPress as any}
+        onDidFinishLoadingMap={() => props.onMapReady?.()}
+        onTouchStart={() => {
+          if (!interactive) return;
+          props.onUserGesture?.();
+        }}
+        onTouchMove={() => {
+          if (!interactive) return;
+          props.onUserGesture?.();
+        }}
+      >
+        <MapboxGL.Camera ref={cameraRef} defaultSettings={defaultSettings as any} />
 
       {(props.polygons || [])
         .filter((p) => p && p.id && p.geojson)
@@ -288,7 +291,8 @@ export const AppMap = forwardRef<AppMapRef, Props>(function AppMap(props, ref) {
           {m.child}
         </MapboxGL.PointAnnotation>
       ))}
-    </MapboxGL.MapView>
+      </MapboxGL.MapView>
+    </View>
   );
 });
 

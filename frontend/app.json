@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.star.trasladossc",
-      "buildNumber": "25",
+      "buildNumber": "26",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "STAR TRASLADOS C.A usa tu ubicacion para mostrar el mapa, calcular rutas y actualizar tus viajes en tiempo real.",
         "ITSAppUsesNonExemptEncryption": false
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.star.trasladossc",
-      "versionCode": 25,
+      "versionCode": 26,
       "googleServicesFile": "./google-services.json",
       "blockedPermissions": [
         "android.permission.CAMERA"

@@ -118,9 +118,6 @@ export function LoginScreen({ navigation }: Props) {
           </Pressable>
           <Text style={styles.hint}>Ejecutivos y admin los crea el administrador.</Text>
           </View>
-
-          
-          </View>
         </View>
       </ScrollView>
     </Screen>
